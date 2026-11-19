@@ -356,7 +356,7 @@ export function MetalColorsView({
                       <td className="px-4 py-2.5 text-left">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`h-6 w-10 shrink-0 rounded ${
+                            className={`h-6 w-10 shrink-0 rounded border border-slate-200 ${
                               unavailable ? 'opacity-50' : ''
                             }`}
                             style={{ backgroundColor: color.hex_code }}

@@ -372,14 +372,17 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
 
-    // Swatch box + color name inside merged Color column (no border — matches web tables)
+    // Swatch box + color name inside merged Color column (thin border — matches web tables)
+    doc.save();
+    doc.lineWidth(0.5).strokeColor('#CBD5E1');
     doc
       .rect(cols[1].x + 6, y + (rowH - 16) / 2, 24, 16)
-      .fill(normalizeHex(item.hex_code));
+      .fillAndStroke(normalizeHex(item.hex_code), '#CBD5E1');
+    doc.restore();
 
     const textColor = item.is_available ? TEXT_DARK : '#64748B';
     doc.font('Helvetica').fontSize(9.5).fillColor(textColor);
-    drawPdfCenteredText(doc, String(item.id), cols[0].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, String(i + 1), cols[0].x + 6, y, rowH, {
       width: cols[0].w - 12,
     });
     drawPdfCenteredText(doc, item.name, cols[1].x + 36, y, rowH, {
@@ -558,16 +561,23 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
 
+    const imgX = cols[1].x + 8;
+    const imgY = y + (rowH - 32) / 2;
     const imgBuf = await loadImageBuffer(item.image_path, 72);
     if (imgBuf) {
-      doc.image(imgBuf, cols[1].x + 8, y + (rowH - 32) / 2, { width: 32, height: 32 });
+      doc.image(imgBuf, imgX, imgY, { width: 32, height: 32 });
     } else {
-      doc.rect(cols[1].x + 8, y + (rowH - 32) / 2, 32, 32).fill(NEUTRAL_BG);
+      doc.rect(imgX, imgY, 32, 32).fill(NEUTRAL_BG);
     }
+    // Thin border around the thumbnail — matches web tables
+    doc.save();
+    doc.lineWidth(0.5).strokeColor('#CBD5E1');
+    doc.rect(imgX, imgY, 32, 32).stroke();
+    doc.restore();
 
     const textColor = item.is_available ? TEXT_DARK : '#64748B';
     doc.font('Helvetica').fontSize(9.5).fillColor(textColor);
-    drawPdfCenteredText(doc, String(item.id), cols[0].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, String(i + 1), cols[0].x + 6, y, rowH, {
       width: cols[0].w - 12,
     });
     drawPdfCenteredText(doc, item.name, cols[1].x + 48, y, rowH, {
@@ -979,12 +989,19 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     });
 
     // Col 1: Product (thumbnail + vertically centered name + ($price) stack)
+    const thumbX = cols[1].x + 5;
+    const thumbY = y + (rowH - 30) / 2;
     const imgBuf = await loadImageBuffer(item.product_image_path, 64);
     if (imgBuf) {
-      doc.image(imgBuf, cols[1].x + 5, y + (rowH - 30) / 2, { width: 30, height: 30 });
+      doc.image(imgBuf, thumbX, thumbY, { width: 30, height: 30 });
     } else {
-      doc.rect(cols[1].x + 5, y + (rowH - 30) / 2, 30, 30).fill(NEUTRAL_BG);
+      doc.rect(thumbX, thumbY, 30, 30).fill(NEUTRAL_BG);
     }
+    // Thin border around the thumbnail — matches web tables
+    doc.save();
+    doc.lineWidth(0.5).strokeColor('#CBD5E1');
+    doc.rect(thumbX, thumbY, 30, 30).stroke();
+    doc.restore();
 
     const prodTextW = cols[1].w - 44;
     doc.font('Helvetica-Bold').fontSize(8.3);
@@ -1009,10 +1026,13 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       width: prodTextW,
     });
 
-    // Col 2: Color (centered swatch + vertically centered name + (+$price) stack) — no border
+    // Col 2: Color (centered swatch + vertically centered name + (+$price) stack) — thin border matches web tables
+    doc.save();
+    doc.lineWidth(0.5).strokeColor('#CBD5E1');
     doc
       .rect(cols[2].x + 5, y + (rowH - 13) / 2, 15, 13)
-      .fill(normalizeHex(item.color_hex));
+      .fillAndStroke(normalizeHex(item.color_hex), '#CBD5E1');
+    doc.restore();
 
     const colorTextW = cols[2].w - 29;
     doc.font('Helvetica').fontSize(8.3);
@@ -1153,8 +1173,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   });
 
   // Additional Notes & Signatures block (replaces the old thank-you line)
-  let notesY = y + footerH + 18;
-  const notesBlockH = 16 + 3 * 18 + 26 + 30; // label + 3 note lines + gap + signature block
+  let notesY = y + footerH + 36;
+  const notesBlockH = 24 + 3 * 18 + 26 + 30; // label + 3 note lines + gap + signature block
   if (notesY + notesBlockH > doc.page.height - 40) {
     doc.addPage();
     notesY = 40;
@@ -1166,13 +1186,16 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   doc.save();
   doc.lineWidth(0.5).strokeColor('#CBD5E1');
   for (let i = 0; i < 3; i++) {
-    const lineY = notesY + 16 + i * 18;
+    const lineY = notesY + 24 + i * 18;
     doc.moveTo(40, lineY).lineTo(doc.page.width - 40, lineY).stroke();
   }
   doc.restore();
 
-  const sigY = notesY + 16 + 2 * 18 + 26;
-  const halfW = (doc.page.width - 80) / 2 - 16;
+  // Signatures sit near the bottom of the page (but not flush against the bottom edge),
+  // never overlapping the notes lines above them.
+  const notesEndY = notesY + 24 + 3 * 18;
+  const sigY = Math.max(notesEndY + 26, doc.page.height - 40 - 50);
+  const halfW = ((doc.page.width - 80) / 2 - 16) / 2;
   const sigCols = [
     { x: 40, label: 'Customer Signature' },
     { x: 40 + halfW + 32, label: 'Seller Signature' },

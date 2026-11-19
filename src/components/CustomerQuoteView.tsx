@@ -525,7 +525,7 @@ export function CustomerQuoteView({
                               {colorAvailable && color && !row.hasColorIssue && (
                                 <div className="flex items-center gap-2 pt-0.5">
                                   <span
-                                    className="inline-block h-4 w-6 shrink-0 rounded"
+                                    className="inline-block h-4 w-6 shrink-0 rounded border border-slate-200"
                                     style={{ backgroundColor: color.hex_code }}
                                   />
                                   <span className="text-xs font-medium text-slate-800">

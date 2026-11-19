@@ -20,7 +20,6 @@ import {
 const BRAND_BLUE = '#084091';
 const BRAND_GREEN = '#2A6F3B';
 const NEUTRAL_BG = '#F7F7F7';
-const BORDER_COLOR = '#CBD5E1';
 const TEXT_DARK = '#0F172A';
 const TEXT_MUTED = '#475569';
 
@@ -373,10 +372,10 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
 
-    // Swatch box + color name inside merged Color column
+    // Swatch box + color name inside merged Color column (no border — matches web tables)
     doc
       .rect(cols[1].x + 6, y + (rowH - 16) / 2, 24, 16)
-      .fillAndStroke(normalizeHex(item.hex_code), BORDER_COLOR);
+      .fill(normalizeHex(item.hex_code));
 
     const textColor = item.is_available ? TEXT_DARK : '#64748B';
     doc.font('Helvetica').fontSize(9.5).fillColor(textColor);
@@ -563,7 +562,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     if (imgBuf) {
       doc.image(imgBuf, cols[1].x + 8, y + (rowH - 32) / 2, { width: 32, height: 32 });
     } else {
-      doc.rect(cols[1].x + 8, y + (rowH - 32) / 2, 32, 32).strokeColor(BORDER_COLOR).stroke();
+      doc.rect(cols[1].x + 8, y + (rowH - 32) / 2, 32, 32).fill(NEUTRAL_BG);
     }
 
     const textColor = item.is_available ? TEXT_DARK : '#64748B';
@@ -984,7 +983,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     if (imgBuf) {
       doc.image(imgBuf, cols[1].x + 5, y + (rowH - 30) / 2, { width: 30, height: 30 });
     } else {
-      doc.rect(cols[1].x + 5, y + (rowH - 30) / 2, 30, 30).strokeColor(BORDER_COLOR).stroke();
+      doc.rect(cols[1].x + 5, y + (rowH - 30) / 2, 30, 30).fill(NEUTRAL_BG);
     }
 
     const prodTextW = cols[1].w - 44;
@@ -1010,10 +1009,10 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       width: prodTextW,
     });
 
-    // Col 2: Color (centered swatch + vertically centered name + (+$price) stack)
+    // Col 2: Color (centered swatch + vertically centered name + (+$price) stack) — no border
     doc
       .rect(cols[2].x + 5, y + (rowH - 13) / 2, 15, 13)
-      .fillAndStroke(normalizeHex(item.color_hex), BORDER_COLOR);
+      .fill(normalizeHex(item.color_hex));
 
     const colorTextW = cols[2].w - 29;
     doc.font('Helvetica').fontSize(8.3);

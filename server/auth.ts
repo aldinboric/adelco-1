@@ -12,6 +12,7 @@ export interface UserPermissions {
   products_manage: boolean;
   colors_view: boolean;
   colors_manage: boolean;
+  catalog_reorder: boolean;
   exports: boolean;
   backup_settings: boolean;
 }
@@ -39,12 +40,15 @@ export const ALL_PERMISSIONS: UserPermissions = {
   products_manage: true,
   colors_view: true,
   colors_manage: true,
+  catalog_reorder: true,
   exports: true,
   backup_settings: true,
 };
 
+// Regular users do NOT get catalog_reorder by default — only admin can grant it.
 export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
   ...ALL_PERMISSIONS,
+  catalog_reorder: false,
 };
 
 export const SESSION_COOKIE_NAME = 'adelco_session';
@@ -117,6 +121,7 @@ export function sanitizePermissions(input: unknown, fallback: UserPermissions = 
     products_manage: typeof src.products_manage === 'boolean' ? src.products_manage : fallback.products_manage,
     colors_view: typeof src.colors_view === 'boolean' ? src.colors_view : fallback.colors_view,
     colors_manage: typeof src.colors_manage === 'boolean' ? src.colors_manage : fallback.colors_manage,
+    catalog_reorder: typeof src.catalog_reorder === 'boolean' ? src.catalog_reorder : fallback.catalog_reorder,
     exports: typeof src.exports === 'boolean' ? src.exports : fallback.exports,
     backup_settings: typeof src.backup_settings === 'boolean' ? src.backup_settings : fallback.backup_settings,
   };

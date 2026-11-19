@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   FileText,
+  GripVertical,
   ImagePlus,
   Pencil,
   Plus,
@@ -25,6 +26,7 @@ interface MetalProductsViewProps {
   products: MetalProduct[];
   loading: boolean;
   canManage?: boolean;
+  canReorder?: boolean;
   canExport?: boolean;
   onRefresh: () => Promise<void>;
   onNotify: (type: 'success' | 'error', text: string) => void;
@@ -34,6 +36,7 @@ export function MetalProductsView({
   products,
   loading,
   canManage = true,
+  canReorder = false,
   canExport = true,
   onRefresh,
   onNotify,
@@ -50,6 +53,47 @@ export function MetalProductsView({
 
   const [deleteTarget, setDeleteTarget] = useState<MetalProduct | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Locally reordered list (optimistic drag & drop, synced from server props)
+  const [orderedProducts, setOrderedProducts] = useState<MetalProduct[]>(products);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [overId, setOverId] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  useEffect(() => {
+    setOrderedProducts(products);
+  }, [products]);
+
+  const handleDrop = async (targetId: number) => {
+    if (!canReorder || dragId === null || dragId === targetId || savingOrder) return;
+    const fromIdx = orderedProducts.findIndex((p) => p.id === dragId);
+    const toIdx = orderedProducts.findIndex((p) => p.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+
+    const next = [...orderedProducts];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setOrderedProducts(next);
+    setSavingOrder(true);
+    try {
+      const res = await apiFetch('/api/products/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: next.map((p) => p.id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save order.');
+      await onRefresh();
+      onNotify('success', 'Product order saved.');
+    } catch (err) {
+      setOrderedProducts(products);
+      onNotify('error', err instanceof Error ? err.message : 'Reorder failed.');
+    } finally {
+      setDragId(null);
+      setOverId(null);
+      setSavingOrder(false);
+    }
+  };
 
   const isModalOpen = addModalOpen || editingProduct !== null;
 
@@ -279,6 +323,7 @@ export function MetalProductsView({
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
+                  {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">ID</th>
                   <th className="px-4 py-3 text-left">Product</th>
                   <th className="px-4 py-3 w-44 text-right">Price per linear ft</th>
@@ -287,19 +332,51 @@ export function MetalProductsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {products.map((product, idx) => {
+                {orderedProducts.map((product, idx) => {
                   const unavailable = product.is_available === 0;
+                  const isDragging = dragId === product.id;
+                  const isDropTarget = overId === product.id && dragId !== null && dragId !== product.id;
                   return (
                     <tr
                       key={product.id}
+                      draggable={canReorder}
+                      onDragStart={() => canReorder && setDragId(product.id)}
+                      onDragOver={(e) => {
+                        if (!canReorder) return;
+                        e.preventDefault();
+                        setOverId(product.id);
+                      }}
+                      onDrop={(e) => {
+                        if (!canReorder) return;
+                        e.preventDefault();
+                        handleDrop(product.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setOverId(null);
+                      }}
                       className={`divide-x divide-slate-200 transition-colors ${
-                        unavailable
+                        isDragging
+                          ? 'opacity-40'
+                          : isDropTarget
+                          ? 'bg-[#084091]/10'
+                          : unavailable
                           ? 'bg-slate-100/80 text-slate-400'
                           : idx % 2 === 1
                           ? 'bg-[#f7f7f7]/60 hover:bg-slate-100/60'
                           : 'bg-white hover:bg-slate-50'
                       }`}
                     >
+                      {canReorder && (
+                        <td className="px-2 py-2 text-left">
+                          <span
+                            className="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+                            title="Drag to reorder"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-left font-mono text-xs tabular-nums text-slate-500">
                         {product.id}
                       </td>

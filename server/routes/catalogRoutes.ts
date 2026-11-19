@@ -58,6 +58,33 @@ async function processProductImage(buffer: Buffer): Promise<string> {
   return `products/${filename}`;
 }
 
+function applyReorder(
+  table: 'metal_colors' | 'metal_products',
+  rawIds: unknown
+): { ok: true; order: number[] } | { ok: false; error: string } {
+  const ids = Array.isArray(rawIds) ? rawIds : [];
+  const parsed = ids.map((v) => parsePositiveInt(v));
+  if (parsed.length === 0 || parsed.some((p) => p === null)) {
+    return { ok: false, error: 'ids must be a non-empty array of positive integers.' };
+  }
+  const order = parsed as number[];
+  if (new Set(order).size !== order.length) {
+    return { ok: false, error: 'ids must not contain duplicates.' };
+  }
+  const db = getDb();
+  const existing = (db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: number }>).map(
+    (r) => r.id
+  );
+  if (existing.length !== order.length || !order.every((id) => existing.includes(id))) {
+    return { ok: false, error: 'ids must match exactly the existing rows.' };
+  }
+  const stmt = db.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`);
+  db.transaction(() => {
+    order.forEach((id, idx) => stmt.run(idx, id));
+  })();
+  return { ok: true, order };
+}
+
 export function createCatalogRouter(): Router {
   const router = Router();
 
@@ -96,7 +123,7 @@ export function createCatalogRouter(): Router {
     requireAnyPermission('colors_view', 'customer_quote'),
     (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY id ASC').all() as MetalColorRow[];
+      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
       res.json(rows);
     }
   );
@@ -121,11 +148,14 @@ export function createCatalogRouter(): Router {
 
     const db = getDb();
     const now = new Date().toISOString();
+    const maxSort = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM metal_colors').get() as {
+      m: number;
+    };
     const info = db
       .prepare(
-        'INSERT INTO metal_colors (name, hex_code, price_per_lf_cents, is_available, created_at) VALUES (?, ?, ?, 1, ?)'
+        'INSERT INTO metal_colors (name, hex_code, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, 1, ?, ?)'
       )
-      .run(name, hex, priceCents, now);
+      .run(name, hex, priceCents, maxSort.m + 1, now);
     const created = db.prepare('SELECT * FROM metal_colors WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(created);
   });
@@ -191,6 +221,20 @@ export function createCatalogRouter(): Router {
     }
   );
 
+  router.patch(
+    '/colors/reorder',
+    requireAuth,
+    requirePermission('catalog_reorder'),
+    (req: Request, res: Response) => {
+      const result = applyReorder('metal_colors', req.body?.ids);
+      if (!result.ok) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json({ ok: true, order: result.order });
+    }
+  );
+
   router.delete('/colors/:id', requireAuth, requirePermission('colors_manage'), (req: Request, res: Response) => {
     const id = parsePositiveInt(req.params.id);
     if (!id) {
@@ -212,7 +256,7 @@ export function createCatalogRouter(): Router {
     requirePermission('colors_view', 'exports'),
     async (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY id ASC').all() as MetalColorRow[];
+      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
       const buf = await buildColorsExcel(rows);
       sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Colors.xlsx', buf);
     }
@@ -224,7 +268,7 @@ export function createCatalogRouter(): Router {
     requirePermission('colors_view', 'exports'),
     async (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY id ASC').all() as MetalColorRow[];
+      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
       const buf = await buildColorsPdf(rows);
       sendBufferDownload(res, 'application/pdf', 'AdelCo-Colors.pdf', buf);
     }
@@ -239,7 +283,7 @@ export function createCatalogRouter(): Router {
     requireAnyPermission('products_view', 'customer_quote'),
     (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY id ASC').all() as MetalProductRow[];
+      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
       res.json(rows);
     }
   );
@@ -270,11 +314,14 @@ export function createCatalogRouter(): Router {
 
         const db = getDb();
         const now = new Date().toISOString();
+        const maxSort = db
+          .prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM metal_products')
+          .get() as { m: number };
         const info = db
           .prepare(
-            'INSERT INTO metal_products (name, image_path, price_per_lf_cents, is_available, created_at) VALUES (?, ?, ?, 1, ?)'
+            'INSERT INTO metal_products (name, image_path, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, 1, ?, ?)'
           )
-          .run(name, imagePath, priceCents, now);
+          .run(name, imagePath, priceCents, maxSort.m + 1, now);
         res.status(201).json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(info.lastInsertRowid));
       } catch (err) {
         res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create product.' });
@@ -363,6 +410,20 @@ export function createCatalogRouter(): Router {
     }
   );
 
+  router.patch(
+    '/products/reorder',
+    requireAuth,
+    requirePermission('catalog_reorder'),
+    (req: Request, res: Response) => {
+      const result = applyReorder('metal_products', req.body?.ids);
+      if (!result.ok) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json({ ok: true, order: result.order });
+    }
+  );
+
   router.delete('/products/:id', requireAuth, requirePermission('products_manage'), (req: Request, res: Response) => {
     const id = parsePositiveInt(req.params.id);
     if (!id) {
@@ -388,7 +449,7 @@ export function createCatalogRouter(): Router {
     requirePermission('products_view', 'exports'),
     async (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY id ASC').all() as MetalProductRow[];
+      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
       const buf = await buildProductsExcel(rows);
       sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Products.xlsx', buf);
     }
@@ -400,7 +461,7 @@ export function createCatalogRouter(): Router {
     requirePermission('products_view', 'exports'),
     async (_req: Request, res: Response) => {
       const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY id ASC').all() as MetalProductRow[];
+      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
       const buf = await buildProductsPdf(rows);
       sendBufferDownload(res, 'application/pdf', 'AdelCo-Products.pdf', buf);
     }

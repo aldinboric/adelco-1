@@ -30,6 +30,7 @@ const DEFAULT_NEW_USER_PERMISSIONS: UserPermissions = {
   products_manage: true,
   colors_view: true,
   colors_manage: true,
+  catalog_reorder: false,
   exports: true,
   backup_settings: true,
 };
@@ -42,6 +43,7 @@ const EMPTY_USER_PERMISSIONS: UserPermissions = {
   products_manage: false,
   colors_view: false,
   colors_manage: false,
+  catalog_reorder: false,
   exports: false,
   backup_settings: false,
 };
@@ -92,6 +94,11 @@ const PERMISSION_GROUPS: Array<{
         key: 'colors_manage',
         label: 'Manage Colors',
         description: 'Add, edit, disable/enable, and delete colors',
+      },
+      {
+        key: 'catalog_reorder',
+        label: 'Reorder Catalog Items',
+        description: 'Drag & drop rows to change the order of Products and Colors tables',
       },
     ],
   },

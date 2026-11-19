@@ -154,6 +154,7 @@ export default function App() {
   const canManageProducts = hasPermission(currentUser, 'products_manage');
   const canViewColors = hasPermission(currentUser, 'colors_view');
   const canManageColors = hasPermission(currentUser, 'colors_manage');
+  const canReorderCatalog = hasPermission(currentUser, 'catalog_reorder');
   const canExport = hasPermission(currentUser, 'exports');
   const canBackupSettings = hasPermission(currentUser, 'backup_settings');
   const isAdmin = currentUser?.role === 'admin';
@@ -554,6 +555,7 @@ export default function App() {
                     products={products}
                     loading={catalogLoading}
                     canManage={canManageProducts}
+                    canReorder={canReorderCatalog}
                     canExport={canExport}
                     onRefresh={loadCatalogs}
                     onNotify={notify}
@@ -565,6 +567,7 @@ export default function App() {
                     colors={colors}
                     loading={catalogLoading}
                     canManage={canManageColors}
+                    canReorder={canReorderCatalog}
                     canExport={canExport}
                     onRefresh={loadCatalogs}
                     onNotify={notify}

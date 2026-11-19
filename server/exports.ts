@@ -334,7 +334,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
   let y = await drawPdfBrandHeader(
     doc,
     'Colors Catalog',
-    'Standard Finishes & Linear Foot Pricing'
+    'Home Services'
   );
 
   const cols = [
@@ -521,7 +521,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
   let y = await drawPdfBrandHeader(
     doc,
     'Products Catalog',
-    'Base Profiles & Linear Foot Pricing'
+    'Home Services'
   );
 
   const cols = [
@@ -1153,15 +1153,41 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     align: 'right',
   });
 
-  doc
-    .font('Helvetica')
-    .fontSize(8.5)
-    .fillColor(TEXT_MUTED)
-    .text(
-      'Thank you for choosing AdelCo Inc. All prices are quoted in Canadian Dollars (CAD).',
-      40,
-      y + footerH + 16
-    );
+  // Additional Notes & Signatures block (replaces the old thank-you line)
+  let notesY = y + footerH + 18;
+  const notesBlockH = 16 + 3 * 18 + 26 + 30; // label + 3 note lines + gap + signature block
+  if (notesY + notesBlockH > doc.page.height - 40) {
+    doc.addPage();
+    notesY = 40;
+  }
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_DARK);
+  doc.text('Additional Notes', 40, notesY);
+
+  doc.save();
+  doc.lineWidth(0.5).strokeColor('#CBD5E1');
+  for (let i = 0; i < 3; i++) {
+    const lineY = notesY + 16 + i * 18;
+    doc.moveTo(40, lineY).lineTo(doc.page.width - 40, lineY).stroke();
+  }
+  doc.restore();
+
+  const sigY = notesY + 16 + 2 * 18 + 26;
+  const halfW = (doc.page.width - 80) / 2 - 16;
+  const sigCols = [
+    { x: 40, label: 'Customer Signature' },
+    { x: 40 + halfW + 32, label: 'Seller Signature' },
+  ];
+  doc.save();
+  doc.lineWidth(0.7).strokeColor('#64748B');
+  for (const c of sigCols) {
+    doc.moveTo(c.x, sigY).lineTo(c.x + halfW, sigY).stroke();
+  }
+  doc.restore();
+  doc.font('Helvetica').fontSize(8).fillColor(TEXT_MUTED);
+  for (const c of sigCols) {
+    doc.text(c.label, c.x, sigY + 5, { width: halfW });
+  }
 
   return pdfToBuffer(doc);
 }
@@ -1265,7 +1291,7 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
   let y = await drawPdfBrandHeader(
     doc,
     'Issued Quotes Register',
-    `${quotes.length} Issued Quote(s) · Summary Ledger`
+    'Home Services'
   );
 
   const cols = [

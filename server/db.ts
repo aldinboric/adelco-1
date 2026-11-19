@@ -17,6 +17,7 @@ export interface MetalColorRow {
   hex_code: string;
   price_per_lf_cents: number;
   is_available: number;
+  sort_order: number;
   created_at: string;
 }
 
@@ -26,6 +27,7 @@ export interface MetalProductRow {
   image_path: string | null;
   price_per_lf_cents: number;
   is_available: number;
+  sort_order: number;
   created_at: string;
 }
 
@@ -110,6 +112,7 @@ function initSchema(db: Database.Database): void {
       hex_code TEXT NOT NULL,
       price_per_lf_cents INTEGER NOT NULL CHECK (price_per_lf_cents >= 0),
       is_available INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -119,6 +122,7 @@ function initSchema(db: Database.Database): void {
       image_path TEXT,
       price_per_lf_cents INTEGER NOT NULL CHECK (price_per_lf_cents >= 0),
       is_available INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -195,6 +199,22 @@ function initSchema(db: Database.Database): void {
   }
   if (!itemCols.some((c) => c.name === 'additional_costs_description')) {
     db.exec('ALTER TABLE issued_quote_items ADD COLUMN additional_costs_description TEXT;');
+  }
+
+  // sort_order migrations for drag & drop reordering (backfill preserves id order)
+  const colorCols = db.prepare('PRAGMA table_info(metal_colors)').all() as Array<{ name: string }>;
+  if (!colorCols.some((c) => c.name === 'sort_order')) {
+    db.exec('ALTER TABLE metal_colors ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
+    db.exec(
+      'UPDATE metal_colors SET sort_order = (SELECT COUNT(*) FROM metal_colors AS c2 WHERE c2.id < metal_colors.id);'
+    );
+  }
+  const productCols = db.prepare('PRAGMA table_info(metal_products)').all() as Array<{ name: string }>;
+  if (!productCols.some((c) => c.name === 'sort_order')) {
+    db.exec('ALTER TABLE metal_products ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
+    db.exec(
+      'UPDATE metal_products SET sort_order = (SELECT COUNT(*) FROM metal_products AS p2 WHERE p2.id < metal_products.id);'
+    );
   }
 }
 

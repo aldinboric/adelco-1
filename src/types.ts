@@ -10,6 +10,7 @@ export interface UserPermissions {
   products_manage: boolean;
   colors_view: boolean;
   colors_manage: boolean;
+  catalog_reorder: boolean;
   exports: boolean;
   backup_settings: boolean;
 }
@@ -33,6 +34,7 @@ export interface MetalColor {
   hex_code: string;
   price_per_lf_cents: number;
   is_available: number;
+  sort_order: number;
   created_at: string;
 }
 
@@ -42,6 +44,7 @@ export interface MetalProduct {
   image_path: string | null;
   price_per_lf_cents: number;
   is_available: number;
+  sort_order: number;
   created_at: string;
 }
 

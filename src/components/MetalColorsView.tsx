@@ -1,5 +1,15 @@
-import { Ban, CheckCircle2, FileSpreadsheet, FileText, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  Ban,
+  CheckCircle2,
+  FileSpreadsheet,
+  FileText,
+  GripVertical,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { MetalColor } from '../types';
 import { apiFetch, downloadProtectedFile } from '../utils/api';
 import {
@@ -14,6 +24,7 @@ interface MetalColorsViewProps {
   colors: MetalColor[];
   loading: boolean;
   canManage?: boolean;
+  canReorder?: boolean;
   canExport?: boolean;
   onRefresh: () => Promise<void>;
   onNotify: (type: 'success' | 'error', text: string) => void;
@@ -23,6 +34,7 @@ export function MetalColorsView({
   colors,
   loading,
   canManage = true,
+  canReorder = false,
   canExport = true,
   onRefresh,
   onNotify,
@@ -37,6 +49,47 @@ export function MetalColorsView({
 
   const [deleteTarget, setDeleteTarget] = useState<MetalColor | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Locally reordered list (optimistic drag & drop, synced from server props)
+  const [orderedColors, setOrderedColors] = useState<MetalColor[]>(colors);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [overId, setOverId] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  useEffect(() => {
+    setOrderedColors(colors);
+  }, [colors]);
+
+  const handleDrop = async (targetId: number) => {
+    if (!canReorder || dragId === null || dragId === targetId || savingOrder) return;
+    const fromIdx = orderedColors.findIndex((c) => c.id === dragId);
+    const toIdx = orderedColors.findIndex((c) => c.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+
+    const next = [...orderedColors];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setOrderedColors(next);
+    setSavingOrder(true);
+    try {
+      const res = await apiFetch('/api/colors/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: next.map((c) => c.id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save order.');
+      await onRefresh();
+      onNotify('success', 'Color order saved.');
+    } catch (err) {
+      setOrderedColors(colors);
+      onNotify('error', err instanceof Error ? err.message : 'Reorder failed.');
+    } finally {
+      setDragId(null);
+      setOverId(null);
+      setSavingOrder(false);
+    }
+  };
 
   const isModalOpen = addModalOpen || editingColor !== null;
 
@@ -242,6 +295,7 @@ export function MetalColorsView({
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
+                  {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">ID</th>
                   <th className="px-4 py-3 text-left">Color</th>
                   <th className="px-4 py-3 w-28 text-left">HEX</th>
@@ -251,26 +305,58 @@ export function MetalColorsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {colors.map((color, idx) => {
+                {orderedColors.map((color, idx) => {
                   const unavailable = color.is_available === 0;
+                  const isDragging = dragId === color.id;
+                  const isDropTarget = overId === color.id && dragId !== null && dragId !== color.id;
                   return (
                     <tr
                       key={color.id}
+                      draggable={canReorder}
+                      onDragStart={() => canReorder && setDragId(color.id)}
+                      onDragOver={(e) => {
+                        if (!canReorder) return;
+                        e.preventDefault();
+                        setOverId(color.id);
+                      }}
+                      onDrop={(e) => {
+                        if (!canReorder) return;
+                        e.preventDefault();
+                        handleDrop(color.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setOverId(null);
+                      }}
                       className={`divide-x divide-slate-200 transition-colors ${
-                        unavailable
+                        isDragging
+                          ? 'opacity-40'
+                          : isDropTarget
+                          ? 'bg-[#084091]/10'
+                          : unavailable
                           ? 'bg-slate-100/80 text-slate-400'
                           : idx % 2 === 1
                           ? 'bg-[#f7f7f7]/60 hover:bg-slate-100/60'
                           : 'bg-white hover:bg-slate-50'
                       }`}
                     >
+                      {canReorder && (
+                        <td className="px-2 py-2.5 text-left">
+                          <span
+                            className="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+                            title="Drag to reorder"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 text-left font-mono text-xs tabular-nums text-slate-500">
                         {color.id}
                       </td>
                       <td className="px-4 py-2.5 text-left">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`h-6 w-10 shrink-0 rounded border border-slate-300 ${
+                            className={`h-6 w-10 shrink-0 rounded ${
                               unavailable ? 'opacity-50' : ''
                             }`}
                             style={{ backgroundColor: color.hex_code }}

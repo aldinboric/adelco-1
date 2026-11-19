@@ -178,7 +178,7 @@ export function QuotePrintModal({
                     <td className="px-3.5 py-2.5 text-left">
                       <div className="flex items-center gap-2">
                         <span
-                          className="inline-block h-4 w-5 shrink-0 rounded border border-slate-300"
+                          className="inline-block h-4 w-5 shrink-0 rounded"
                           style={{ backgroundColor: item.color_hex }}
                         />
                         <span className="text-slate-800">{item.color_name}</span>

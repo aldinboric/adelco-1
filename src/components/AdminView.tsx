@@ -555,7 +555,7 @@ export function AdminView({
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
-                  <th className="px-4 py-3 w-14 text-left">ID</th>
+                  <th className="px-4 py-3 w-14 text-left">#</th>
                   <th className="px-4 py-3 text-left">User</th>
                   <th className="px-4 py-3 w-28 text-left">Role</th>
                   <th className="px-4 py-3 text-left">Permissions</th>
@@ -579,7 +579,7 @@ export function AdminView({
                       }`}
                     >
                       <td className="px-4 py-2.5 text-left font-mono text-xs tabular-nums text-slate-500">
-                        {u.id}
+                        {idx + 1}
                       </td>
                       <td className="px-4 py-2.5 text-left">
                         <div className="font-medium text-slate-900">

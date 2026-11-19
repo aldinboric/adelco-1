@@ -324,7 +324,7 @@ export function MetalProductsView({
               <thead>
                 <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
-                  <th className="px-4 py-3 w-16 text-left">ID</th>
+                  <th className="px-4 py-3 w-16 text-left">#</th>
                   <th className="px-4 py-3 text-left">Product</th>
                   <th className="px-4 py-3 w-44 text-right">Price per linear ft</th>
                   <th className="px-4 py-3 w-28 text-left">Status</th>
@@ -378,7 +378,7 @@ export function MetalProductsView({
                         </td>
                       )}
                       <td className="px-4 py-2 text-left font-mono text-xs tabular-nums text-slate-500">
-                        {product.id}
+                        {idx + 1}
                       </td>
                       <td className="px-4 py-2 text-left">
                         <div className="flex items-center gap-3">
@@ -463,7 +463,9 @@ export function MetalProductsView({
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="text-base font-semibold text-slate-900">
-                {editingProduct ? `Edit Product #${editingProduct.id}` : 'Add Product'}
+                {editingProduct
+                  ? `Edit Product #${orderedProducts.findIndex((p) => p.id === editingProduct.id) + 1}`
+                  : 'Add Product'}
               </h3>
               <button
                 type="button"

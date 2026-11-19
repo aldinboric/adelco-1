@@ -446,9 +446,9 @@ export function CustomerQuoteView({
                               }`}
                             >
                               <option value="">-- Select product --</option>
-                              {availableProducts.map((p) => (
+                              {availableProducts.map((p, pIdx) => (
                                 <option key={p.id} value={p.id}>
-                                  #{p.id} · {p.name} ({formatCAD(p.price_per_lf_cents)}/lf)
+                                  #{pIdx + 1} · {p.name} ({formatCAD(p.price_per_lf_cents)}/lf)
                                 </option>
                               ))}
                             </select>
@@ -501,9 +501,9 @@ export function CustomerQuoteView({
                                 }`}
                               >
                                 <option value="">-- Select color --</option>
-                                {availableColors.map((c) => (
+                                {availableColors.map((c, cIdx) => (
                                   <option key={c.id} value={c.id}>
-                                    #{c.id} · {c.name} (+{formatCAD(c.price_per_lf_cents)}/lf)
+                                    #{cIdx + 1} · {c.name} (+{formatCAD(c.price_per_lf_cents)}/lf)
                                   </option>
                                 ))}
                               </select>

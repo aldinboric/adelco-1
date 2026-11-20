@@ -240,46 +240,27 @@ export function isHttpsRequest(req: Request): boolean {
   return false;
 }
 
-export function isAiStudioIframeHost(req: Request): boolean {
-  if (process.env.ALLOW_IFRAME_AUTH === 'true') return true;
-  const host = ((req.headers['x-forwarded-host'] as string | undefined) || req.headers.host || '')
-    .split(',')[0]
-    .trim()
-    .toLowerCase();
-  return /^ais-(dev|pre)-[a-z0-9.-]+\.run\.app$/i.test(host);
-}
-
 export function setSessionCookie(req: Request, res: Response, rawToken: string): void {
   const maxAgeSec = Math.floor(SESSION_DURATION_MS / 1000);
   const https = isHttpsRequest(req);
-  const iframeMode = https && isAiStudioIframeHost(req);
   const parts = [
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(rawToken)}`,
     'HttpOnly',
     'Path=/',
     `Max-Age=${maxAgeSec}`,
-    ...(iframeMode
-      ? ['SameSite=None', 'Secure', 'Partitioned']
-      : https
-      ? ['SameSite=Lax', 'Secure']
-      : ['SameSite=Lax']),
+    ...(https ? ['SameSite=Lax', 'Secure'] : ['SameSite=Lax']),
   ];
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 export function clearSessionCookie(req: Request, res: Response): void {
   const https = isHttpsRequest(req);
-  const iframeMode = https && isAiStudioIframeHost(req);
   const parts = [
     `${SESSION_COOKIE_NAME}=`,
     'HttpOnly',
     'Path=/',
     'Max-Age=0',
-    ...(iframeMode
-      ? ['SameSite=None', 'Secure', 'Partitioned']
-      : https
-      ? ['SameSite=Lax', 'Secure']
-      : ['SameSite=Lax']),
+    ...(https ? ['SameSite=Lax', 'Secure'] : ['SameSite=Lax']),
   ];
   res.setHeader('Set-Cookie', parts.join('; '));
 }

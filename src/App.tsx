@@ -367,7 +367,7 @@ export default function App() {
       <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <img
-            src="/assets/aistudio/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+            src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
             alt="AdelCo Inc."
             className="h-12 w-12 object-contain"
           />
@@ -407,7 +407,7 @@ export default function App() {
         <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
           <div className="flex items-center gap-3 min-w-0">
             <img
-              src="/assets/aistudio/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+              src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
               alt="AdelCo Inc. Logo"
               className="h-9 w-9 shrink-0 object-contain"
             />

@@ -104,7 +104,7 @@ export function QuotePrintModal({
           <div className="flex items-start justify-between border-b-2 border-[#084091] pb-5">
             <div className="flex items-center gap-3.5">
               <img
-                src="/assets/aistudio/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+                src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
                 alt="AdelCo Inc."
                 className="h-12 w-12 object-contain"
               />

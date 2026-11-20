@@ -5,7 +5,6 @@ import multer from 'multer';
 import path from 'path';
 import {
   ensureInitialAdminUser,
-  isAiStudioIframeHost,
   isHttpsRequest,
   rateLimitApiMutations,
   verifySameOriginForMutations,
@@ -40,19 +39,15 @@ async function startServer() {
     res.setHeader('X-DNS-Prefetch-Control', 'off');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
 
-    const iframeHost = isAiStudioIframeHost(req);
-    if (!iframeHost) {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      if (isProduction) {
-        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-      }
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    if (isProduction) {
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     }
 
     if (isProduction) {
       if (isHttpsRequest(req)) {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
       }
-      const frameAncestors = iframeHost ? "'self' https://aistudio.google.com" : "'self'";
       res.setHeader(
         'Content-Security-Policy',
         [
@@ -65,7 +60,7 @@ async function startServer() {
           "object-src 'none'",
           "base-uri 'self'",
           "form-action 'self'",
-          `frame-ancestors ${frameAncestors}`,
+          "frame-ancestors 'self'",
         ].join('; ')
       );
     }

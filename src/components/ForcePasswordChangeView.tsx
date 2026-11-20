@@ -65,7 +65,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
       <div className="mx-auto w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           <img
-            src="/assets/aistudio/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+            src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
             alt="AdelCo Inc."
             className="h-14 w-14 object-contain"
           />

@@ -32,7 +32,7 @@ async function getCompanyLogoPng(): Promise<Buffer | null> {
   try {
     const svgPath = path.resolve(
       process.cwd(),
-      'public/assets/aistudio/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg'
+      'public/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg'
     );
     if (!fs.existsSync(svgPath)) return null;
     cachedLogoPng = await sharp(fs.readFileSync(svgPath))

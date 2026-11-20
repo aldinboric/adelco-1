@@ -770,7 +770,7 @@ export function CustomerQuoteView({
                 {/* Bottom Action + Grand Total Row */}
                 <tfoot>
                   <tr className="divide-x divide-slate-200 border-t-2 border-slate-200 bg-[#f7f7f7]">
-                    <td colSpan={anyRowHasColorSelected ? 9 : 5} className="px-4 py-3.5 text-left">
+                    <td colSpan={anyRowHasColorSelected ? 7 : 5} className="px-4 py-3.5 text-left">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <button
                           type="button"

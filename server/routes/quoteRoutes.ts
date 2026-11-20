@@ -189,10 +189,11 @@ export function createQuoteRouter(): Router {
           const insertItem = db.prepare(`
             INSERT INTO issued_quote_items (
               quote_id, source_product_id, source_color_id,
-              product_name, product_image_path, color_name, color_hex,
+              product_name, product_image_path, material_type, width_in, gauge, length_ft,
+              color_name, color_hex,
               product_price_per_lf_cents, color_price_per_lf_cents, combined_price_per_lf_cents,
               linear_feet, additional_costs_cents, additional_costs_description, line_total_cents
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           for (const item of validatedItems) {
@@ -203,6 +204,10 @@ export function createQuoteRouter(): Router {
               item.source_color_id,
               item.product_name,
               snapshotImagePath,
+              item.material_type,
+              item.width_in,
+              item.gauge,
+              item.length_ft,
               item.color_name,
               item.color_hex,
               item.product_price_per_lf_cents,
@@ -269,7 +274,11 @@ export function createQuoteRouter(): Router {
 
         return {
           product_id: productOk && prod ? prod.id : null,
+          material_type: old.material_type ?? '',
           color_id: colorOk && color ? color.id : null,
+          width_in: old.width_in ?? null,
+          gauge: old.gauge ?? '',
+          length_ft: old.length_ft ?? null,
           linear_feet: old.linear_feet,
           additional_costs_cents: old.additional_costs_cents ?? 0,
           additional_costs_description: old.additional_costs_description ?? '',

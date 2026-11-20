@@ -44,6 +44,7 @@ export function MetalProductsView({
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<MetalProduct | null>(null);
   const [nameInput, setNameInput] = useState('');
+  const [materialInput, setMaterialInput] = useState('');
   const [priceInput, setPriceInput] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -108,6 +109,7 @@ export function MetalProductsView({
   const openAddModal = () => {
     setEditingProduct(null);
     setNameInput('');
+    setMaterialInput('');
     setPriceInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
@@ -120,6 +122,7 @@ export function MetalProductsView({
     setAddModalOpen(false);
     setEditingProduct(product);
     setNameInput(product.name);
+    setMaterialInput(product.material_type ?? '');
     setPriceInput(centsToDollarsInput(product.price_per_lf_cents));
     setImageFile(null);
     setImagePreviewUrl(getImageUrl(product.image_path));
@@ -130,6 +133,7 @@ export function MetalProductsView({
   const closeModal = () => {
     setAddModalOpen(false);
     setEditingProduct(null);
+    setMaterialInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
     setRemoveImage(false);
@@ -167,6 +171,7 @@ export function MetalProductsView({
     try {
       const formData = new FormData();
       formData.append('name', trimmedName);
+      formData.append('material_type', materialInput.trim());
       formData.append('price_per_lf_cents', String(cents));
       if (imageFile) {
         formData.append('image', imageFile);
@@ -326,6 +331,7 @@ export function MetalProductsView({
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">#</th>
                   <th className="px-4 py-3 text-left">Product</th>
+                  <th className="px-4 py-3 w-48 text-left">Material Type</th>
                   <th className="px-4 py-3 w-44 text-right">Price per linear ft</th>
                   <th className="px-4 py-3 w-28 text-left">Status</th>
                   {canManage && <th className="px-4 py-3 w-52 text-right">Actions</th>}
@@ -393,6 +399,30 @@ export function MetalProductsView({
                             {product.name}
                           </span>
                         </div>
+                      </td>
+                      <td
+                        className={`px-4 py-2 text-left text-xs ${
+                          unavailable ? 'text-slate-400' : 'text-slate-700'
+                        }`}
+                      >
+                        {product.material_type?.trim() ? (
+                          <span className="inline-flex flex-wrap gap-1">
+                            {product.material_type
+                              .split(',')
+                              .map((m) => m.trim())
+                              .filter(Boolean)
+                              .map((m) => (
+                                <span
+                                  key={m}
+                                  className="inline-flex items-center rounded-full border border-[#084091]/20 bg-[#084091]/5 px-2 py-0.5 text-[11px] font-medium text-[#084091]"
+                                >
+                                  {m}
+                                </span>
+                              ))}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right font-mono text-xs font-medium tabular-nums text-slate-900">
                         {formatCAD(product.price_per_lf_cents)}
@@ -496,6 +526,24 @@ export function MetalProductsView({
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  Material Type <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={materialInput}
+                  onChange={(e) => setMaterialInput(e.target.value)}
+                  placeholder="e.g. Steel, Aluminum, Copper"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Separate multiple material types with commas. These appear as choices in the
+                  Customer Quote when this product is selected.
+                </p>
               </div>
 
               <div>

@@ -296,6 +296,8 @@ export function createCatalogRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
+        const materialType =
+          typeof req.body?.material_type === 'string' ? req.body.material_type.trim().slice(0, 200) : '';
         const priceCents = parseCents(req.body?.price_per_lf_cents);
 
         if (!name) {
@@ -319,9 +321,9 @@ export function createCatalogRouter(): Router {
           .get() as { m: number };
         const info = db
           .prepare(
-            'INSERT INTO metal_products (name, image_path, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, 1, ?, ?)'
+            'INSERT INTO metal_products (name, image_path, material_type, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)'
           )
-          .run(name, imagePath, priceCents, maxSort.m + 1, now);
+          .run(name, imagePath, materialType || null, priceCents, maxSort.m + 1, now);
         res.status(201).json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(info.lastInsertRowid));
       } catch (err) {
         res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create product.' });
@@ -338,6 +340,8 @@ export function createCatalogRouter(): Router {
       try {
         const id = parsePositiveInt(req.params.id);
         const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
+        const materialType =
+          typeof req.body?.material_type === 'string' ? req.body.material_type.trim().slice(0, 200) : '';
         const priceCents = parseCents(req.body?.price_per_lf_cents);
         const removeImage = req.body?.remove_image === 'true' || req.body?.remove_image === true;
 
@@ -370,12 +374,9 @@ export function createCatalogRouter(): Router {
           nextImagePath = null;
         }
 
-        db.prepare('UPDATE metal_products SET name = ?, image_path = ?, price_per_lf_cents = ? WHERE id = ?').run(
-          name,
-          nextImagePath,
-          priceCents,
-          id
-        );
+        db.prepare(
+          'UPDATE metal_products SET name = ?, image_path = ?, material_type = ?, price_per_lf_cents = ? WHERE id = ?'
+        ).run(name, nextImagePath, materialType || null, priceCents, id);
 
         if ((req.file || removeImage) && existing.image_path && existing.image_path !== nextImagePath) {
           removeImageFileIfUnused(existing.image_path);

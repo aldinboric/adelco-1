@@ -81,6 +81,24 @@ function sanitizeExcelText(value: string): string {
   return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
+function formatGaugeLabel(gauge: string | null | undefined): string | null {
+  if (!gauge) return null;
+  const t = gauge.trim();
+  if (!t) return null;
+  return /^\d+(\.\d+)?$/.test(t) ? `${t} Ga` : t;
+}
+
+function formatMeasureDimensions(
+  widthIn: number | null | undefined,
+  lengthFt: number | null | undefined
+): string | null {
+  const fmt = (n: number) => n.toLocaleString('en-CA', { maximumFractionDigits: 2 });
+  const w = widthIn && widthIn > 0 ? `${fmt(widthIn)}"` : null;
+  const l = lengthFt && lengthFt > 0 ? `${fmt(lengthFt)}'` : null;
+  if (w && l) return `${w} x ${l}`;
+  return w || l;
+}
+
 function pdfToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -434,7 +452,8 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
   Column.setDefinitions(ws, [
     { key: 'id', width: 10 },
     { key: 'image', width: 14 },
-    { key: 'name', width: 42 },
+    { key: 'name', width: 38 },
+    { key: 'material', width: 22 },
     { key: 'price', width: 22 },
     { key: 'status', width: 16 },
   ]);
@@ -445,10 +464,10 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     logoBuf,
     'Products Catalog',
     `Exported ${new Date().toISOString().slice(0, 10)} · Base product price in CAD per linear foot`,
-    5
+    6
   );
 
-  const headers = ['ID', 'Product', 'Name', 'Price per linear ft', 'Status'];
+  const headers = ['ID', 'Product', 'Name', 'Material Type', 'Price per linear ft', 'Status'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
     const col = idx + 1;
@@ -456,7 +475,7 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     Cell.setStyle(ws, { row: headerRowIdx, col }, {
       font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 4 ? 'right' : 'left' },
+      alignment: { vertical: 'middle', horizontal: col === 5 ? 'right' : 'left' },
       border: {
         top: { style: 'thin', color: { argb: 'FF084091' } },
         bottom: { style: 'thin', color: { argb: 'FF084091' } },
@@ -475,6 +494,7 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
       p.id,
       '',
       sanitizeExcelText(p.name),
+      sanitizeExcelText(p.material_type?.trim() || '—'),
       p.price_per_lf_cents / 100,
       p.is_available ? 'Available' : 'Unavailable',
     ];
@@ -497,10 +517,10 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
         },
         alignment: {
           vertical: 'middle',
-          horizontal: col === 4 ? 'right' : 'left',
-          wrapText: col === 3,
+          horizontal: col === 5 ? 'right' : 'left',
+          wrapText: col === 3 || col === 4,
         },
-        ...(col === 4 ? { numFmt: '$#,##0.00' } : {}),
+        ...(col === 5 ? { numFmt: '$#,##0.00' } : {}),
       });
     });
 
@@ -528,9 +548,10 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
 
   const cols = [
     { label: 'ID', x: 40, w: 40, align: 'left' as const },
-    { label: 'Product', x: 80, w: 308, align: 'left' as const },
-    { label: 'Price / lf', x: 388, w: 108, align: 'right' as const },
-    { label: 'Status', x: 496, w: 76, align: 'left' as const },
+    { label: 'Product', x: 80, w: 196, align: 'left' as const },
+    { label: 'Material Type', x: 276, w: 92, align: 'left' as const },
+    { label: 'Price / lf', x: 368, w: 108, align: 'right' as const },
+    { label: 'Status', x: 476, w: 96, align: 'left' as const },
   ];
 
   const drawHeader = (topY: number) => {
@@ -585,18 +606,23 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[2].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, item.material_type?.trim() || '—', cols[2].x + 6, y, rowH, {
       width: cols[2].w - 12,
+      height: rowH - 8,
+      ellipsis: true,
+    });
+    drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[3].x + 6, y, rowH, {
+      width: cols[3].w - 12,
       align: 'right',
     });
     doc.fillColor(item.is_available ? BRAND_GREEN : '#DC2626');
     drawPdfCenteredText(
       doc,
       item.is_available ? 'Available' : 'Unavailable',
-      cols[3].x + 6,
+      cols[4].x + 6,
       y,
       rowH,
-      { width: cols[3].w - 12 }
+      { width: cols[4].w - 12 }
     );
 
     drawPdfColumnDividers(doc, y, rowH, cols, '#E2E8F0');
@@ -625,6 +651,10 @@ export interface ExportQuotePayload {
   items: Array<{
     product_name: string;
     product_image_path: string | null;
+    material_type?: string | null;
+    width_in?: number | null;
+    gauge?: string | null;
+    length_ft?: number | null;
     color_name: string;
     color_hex: string;
     product_price_per_lf_cents: number;
@@ -650,32 +680,36 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     hasAddCostDesc
       ? [
           { key: 'img', width: 11 },
-          { key: 'product', width: 28 },
+          { key: 'product', width: 26 },
+          { key: 'material', width: 16 },
           { key: 'swatch', width: 8 },
-          { key: 'color', width: 20 },
-          { key: 'prodPrice', width: 14 },
-          { key: 'combPrice', width: 16 },
-          { key: 'lf', width: 13 },
-          { key: 'addCostsDesc', width: 24 },
-          { key: 'addCosts', width: 17 },
-          { key: 'total', width: 16 },
+          { key: 'color', width: 18 },
+          { key: 'measures', width: 18 },
+          { key: 'prodPrice', width: 13 },
+          { key: 'combPrice', width: 15 },
+          { key: 'lf', width: 12 },
+          { key: 'addCostsDesc', width: 22 },
+          { key: 'addCosts', width: 15 },
+          { key: 'total', width: 15 },
         ]
       : [
           { key: 'img', width: 11 },
-          { key: 'product', width: 28 },
+          { key: 'product', width: 26 },
+          { key: 'material', width: 16 },
           { key: 'swatch', width: 8 },
-          { key: 'color', width: 20 },
-          { key: 'prodPrice', width: 14 },
-          { key: 'combPrice', width: 16 },
-          { key: 'lf', width: 13 },
-          { key: 'addCosts', width: 17 },
-          { key: 'total', width: 16 },
+          { key: 'color', width: 18 },
+          { key: 'measures', width: 18 },
+          { key: 'prodPrice', width: 13 },
+          { key: 'combPrice', width: 15 },
+          { key: 'lf', width: 12 },
+          { key: 'addCosts', width: 15 },
+          { key: 'total', width: 15 },
         ]
   );
 
-  const totalCols = hasAddCostDesc ? 10 : 9;
-  const lastColLetter = hasAddCostDesc ? 'J' : 'I';
-  const prevColLetter = hasAddCostDesc ? 'I' : 'H';
+  const totalCols = hasAddCostDesc ? 12 : 11;
+  const lastColLetter = hasAddCostDesc ? 'L' : 'K';
+  const prevColLetter = hasAddCostDesc ? 'K' : 'J';
 
   // Top brand block
   Worksheet.merge(ws, `A1:${lastColLetter}1`);
@@ -750,8 +784,10 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     ? [
         'Preview',
         'Product',
+        'Material Type',
         'Color',
         'Color Name',
+        'Measures',
         'Product / lf',
         'Total / lf',
         'Linear ft',
@@ -762,8 +798,10 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     : [
         'Preview',
         'Product',
+        'Material Type',
         'Color',
         'Color Name',
+        'Measures',
         'Product / lf',
         'Total / lf',
         'Linear ft',
@@ -771,7 +809,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         'Total Price',
       ];
   const isRightAlignedCol = (colNum: number) =>
-    hasAddCostDesc ? colNum >= 5 && colNum !== 8 : colNum >= 5;
+    hasAddCostDesc ? colNum >= 7 && colNum !== 10 : colNum >= 7;
 
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
@@ -798,12 +836,19 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     const rowIdx = headerRowIdx + 1 + idx;
     Row.setHeight(ws, rowIdx, 40);
 
+    const measuresText =
+      [formatGaugeLabel(item.gauge), formatMeasureDimensions(item.width_in, item.length_ft)]
+        .filter(Boolean)
+        .join(' · ') || '—';
+
     const values = hasAddCostDesc
       ? [
           '',
           sanitizeExcelText(item.product_name),
+          sanitizeExcelText(item.material_type?.trim() || '—'),
           '',
           sanitizeExcelText(item.color_name),
+          measuresText,
           item.product_price_per_lf_cents / 100,
           item.combined_price_per_lf_cents / 100,
           item.linear_feet,
@@ -814,8 +859,10 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
       : [
           '',
           sanitizeExcelText(item.product_name),
+          sanitizeExcelText(item.material_type?.trim() || '—'),
           '',
           sanitizeExcelText(item.color_name),
+          measuresText,
           item.product_price_per_lf_cents / 100,
           item.combined_price_per_lf_cents / 100,
           item.linear_feet,
@@ -827,9 +874,9 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     values.forEach((val, vIdx) => {
       const col = vIdx + 1;
       let numFmt: string | undefined;
-      if (col === 5 || col === 6 || col === totalCols - 1 || col === totalCols) {
+      if (col === 7 || col === 8 || col === totalCols - 1 || col === totalCols) {
         numFmt = '$#,##0.00';
-      } else if (col === 7) {
+      } else if (col === 9) {
         numFmt = '#,##0.##';
       }
 
@@ -844,7 +891,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         fill: {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: col === 3 ? hexToArgb(item.color_hex) : rowBg },
+          fgColor: { argb: col === 4 ? hexToArgb(item.color_hex) : rowBg },
         },
         border: {
           bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
@@ -854,7 +901,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         alignment: {
           vertical: 'middle',
           horizontal: isRightAlignedCol(col) ? 'right' : 'left',
-          wrapText: col === 2 || col === 4 || (hasAddCostDesc && col === 8),
+          wrapText: col === 2 || col === 3 || col === 5 || col === 6 || (hasAddCostDesc && col === 10),
         },
         ...(numFmt ? { numFmt } : {}),
       });
@@ -941,12 +988,12 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   const cols = [
     { label: '#', x: 40, w: 22, align: 'left' as const, twoLine: false },
-    { label: 'Product', x: 62, w: 158, align: 'left' as const, twoLine: false },
-    { label: 'Color', x: 220, w: 108, align: 'left' as const, twoLine: false },
-    { label: 'Total / lf\n(with Color)', x: 328, w: 62, align: 'right' as const, twoLine: true },
-    { label: 'Linear\nFeet', x: 390, w: 50, align: 'right' as const, twoLine: true },
-    { label: 'Additional\nCosts', x: 440, w: 66, align: 'right' as const, twoLine: true },
-    { label: 'Total\nPrice', x: 506, w: 66, align: 'right' as const, twoLine: true },
+    { label: 'Product', x: 62, w: 190, align: 'left' as const, twoLine: false },
+    { label: 'Color', x: 252, w: 96, align: 'left' as const, twoLine: false },
+    { label: 'Total / lf\n(with Color)', x: 348, w: 62, align: 'right' as const, twoLine: true },
+    { label: 'Linear\nFeet', x: 410, w: 50, align: 'right' as const, twoLine: true },
+    { label: 'Additional\nCosts', x: 460, w: 58, align: 'right' as const, twoLine: true },
+    { label: 'Total\nPrice', x: 518, w: 54, align: 'right' as const, twoLine: true },
   ];
 
   const headerH = 28;
@@ -976,7 +1023,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
     const item = quote.items[i];
     totalLinearFeet += item.linear_feet;
-    const rowH = 42;
+    const rowH = 56;
     if (i % 2 === 1) {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
@@ -1004,25 +1051,58 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     doc.restore();
 
     const prodTextW = cols[1].w - 44;
+    const gaugeLabel = formatGaugeLabel(item.gauge);
+    const materialLabel = item.material_type?.trim() || null;
+    const measuresLabel = formatMeasureDimensions(item.width_in, item.length_ft);
+    const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join(' · ');
+    const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)})`;
+
     doc.font('Helvetica-Bold').fontSize(8.3);
     const prodNameH = Math.min(
       measurePdfVisualTextHeight(doc, item.product_name, { width: prodTextW }),
       19
     );
     doc.font('Helvetica').fontSize(7.6);
-    const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)})`;
+    const detailH = detailLine ? measurePdfVisualTextHeight(doc, detailLine, { width: prodTextW }) : 0;
+    const measuresH = measuresLabel
+      ? measurePdfVisualTextHeight(doc, measuresLabel, { width: prodTextW })
+      : 0;
     const prodPriceH = measurePdfVisualTextHeight(doc, prodPriceText, { width: prodTextW });
-    const prodStackH = prodNameH + 3 + prodPriceH;
-    const prodStartY = y + Math.max(3, (rowH - prodStackH) / 2);
+    const prodStackH =
+      prodNameH +
+      (detailLine ? 3 + detailH : 0) +
+      (measuresLabel ? 3 + measuresH : 0) +
+      3 +
+      prodPriceH;
+    let prodCursorY = y + Math.max(3, (rowH - prodStackH) / 2);
 
     doc.font('Helvetica-Bold').fontSize(8.3).fillColor(TEXT_DARK);
-    doc.text(item.product_name, cols[1].x + 40, prodStartY, {
+    doc.text(item.product_name, cols[1].x + 40, prodCursorY, {
       width: prodTextW,
       height: prodNameH + 2,
       ellipsis: true,
     });
+    prodCursorY += prodNameH + 3;
+    if (detailLine) {
+      doc.font('Helvetica').fontSize(7.6).fillColor(BRAND_BLUE);
+      doc.text(detailLine, cols[1].x + 40, prodCursorY, {
+        width: prodTextW,
+        height: detailH + 2,
+        ellipsis: true,
+      });
+      prodCursorY += detailH + 3;
+    }
+    if (measuresLabel) {
+      doc.font('Helvetica-Bold').fontSize(7.6).fillColor(TEXT_DARK);
+      doc.text(measuresLabel, cols[1].x + 40, prodCursorY, {
+        width: prodTextW,
+        height: measuresH + 2,
+        ellipsis: true,
+      });
+      prodCursorY += measuresH + 3;
+    }
     doc.font('Helvetica').fontSize(7.6).fillColor(TEXT_MUTED);
-    doc.text(prodPriceText, cols[1].x + 40, prodStartY + prodNameH + 3, {
+    doc.text(prodPriceText, cols[1].x + 40, prodCursorY, {
       width: prodTextW,
     });
 

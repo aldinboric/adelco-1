@@ -25,6 +25,7 @@ export interface MetalProductRow {
   id: number;
   name: string;
   image_path: string | null;
+  material_type: string | null;
   price_per_lf_cents: number;
   is_available: number;
   sort_order: number;
@@ -48,6 +49,10 @@ export interface IssuedQuoteItemRow {
   source_color_id: number | null;
   product_name: string;
   product_image_path: string | null;
+  material_type: string | null;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
   color_name: string;
   color_hex: string;
   product_price_per_lf_cents: number;
@@ -120,6 +125,7 @@ function initSchema(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       image_path TEXT,
+      material_type TEXT,
       price_per_lf_cents INTEGER NOT NULL CHECK (price_per_lf_cents >= 0),
       is_available INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -143,6 +149,10 @@ function initSchema(db: Database.Database): void {
       source_color_id INTEGER,
       product_name TEXT NOT NULL,
       product_image_path TEXT,
+      material_type TEXT,
+      width_in REAL,
+      gauge TEXT,
+      length_ft REAL,
       color_name TEXT NOT NULL,
       color_hex TEXT NOT NULL,
       product_price_per_lf_cents INTEGER NOT NULL,
@@ -200,6 +210,18 @@ function initSchema(db: Database.Database): void {
   if (!itemCols.some((c) => c.name === 'additional_costs_description')) {
     db.exec('ALTER TABLE issued_quote_items ADD COLUMN additional_costs_description TEXT;');
   }
+  if (!itemCols.some((c) => c.name === 'material_type')) {
+    db.exec('ALTER TABLE issued_quote_items ADD COLUMN material_type TEXT;');
+  }
+  if (!itemCols.some((c) => c.name === 'width_in')) {
+    db.exec('ALTER TABLE issued_quote_items ADD COLUMN width_in REAL;');
+  }
+  if (!itemCols.some((c) => c.name === 'gauge')) {
+    db.exec('ALTER TABLE issued_quote_items ADD COLUMN gauge TEXT;');
+  }
+  if (!itemCols.some((c) => c.name === 'length_ft')) {
+    db.exec('ALTER TABLE issued_quote_items ADD COLUMN length_ft REAL;');
+  }
 
   // sort_order migrations for drag & drop reordering (backfill preserves id order)
   const colorCols = db.prepare('PRAGMA table_info(metal_colors)').all() as Array<{ name: string }>;
@@ -210,6 +232,9 @@ function initSchema(db: Database.Database): void {
     );
   }
   const productCols = db.prepare('PRAGMA table_info(metal_products)').all() as Array<{ name: string }>;
+  if (!productCols.some((c) => c.name === 'material_type')) {
+    db.exec('ALTER TABLE metal_products ADD COLUMN material_type TEXT;');
+  }
   if (!productCols.some((c) => c.name === 'sort_order')) {
     db.exec('ALTER TABLE metal_products ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
     db.exec(

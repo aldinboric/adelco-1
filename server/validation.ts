@@ -67,6 +67,10 @@ export interface ValidatedQuoteLine {
   source_color_id: number;
   product_name: string;
   product_image_path: string | null;
+  material_type: string | null;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
   color_name: string;
   color_hex: string;
   product_price_per_lf_cents: number;
@@ -139,6 +143,49 @@ export function validateAndBuildQuoteLines(
       throw new Error('One or more selected colors are unavailable or deleted.');
     }
 
+    // Material type: comma-separated list on the product; selection must be one of them.
+    // Required when the product defines material types, optional otherwise (legacy products).
+    const availableMaterials = (product.material_type ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean);
+    const rawMaterialType =
+      typeof item.material_type === 'string' ? item.material_type.trim().slice(0, 200) : '';
+    let materialType: string | null = rawMaterialType || null;
+    if (availableMaterials.length > 0) {
+      if (!materialType) {
+        throw new Error(`Every quote line for "${product.name}" must have a Material Type selected.`);
+      }
+      if (!availableMaterials.includes(materialType)) {
+        throw new Error(
+          `Material Type "${materialType}" is not defined for product "${product.name}".`
+        );
+      }
+    } else if (materialType) {
+      // Product has no materials defined — ignore any stale selection.
+      materialType = null;
+    }
+
+    // Measures (optional): Width (in), Gauge (ga), Length (ft)
+    let widthIn: number | null = null;
+    if (item.width_in !== undefined && item.width_in !== null && item.width_in !== '') {
+      const w = Number(item.width_in);
+      if (!Number.isFinite(w) || w <= 0 || w > MAX_LINEAR_FEET) {
+        throw new Error('Width (in) must be a positive number.');
+      }
+      widthIn = w;
+    }
+    let lengthFt: number | null = null;
+    if (item.length_ft !== undefined && item.length_ft !== null && item.length_ft !== '') {
+      const l = Number(item.length_ft);
+      if (!Number.isFinite(l) || l <= 0 || l > MAX_LINEAR_FEET) {
+        throw new Error('Length (ft) must be a positive number.');
+      }
+      lengthFt = l;
+    }
+    const gauge =
+      typeof item.gauge === 'string' && item.gauge.trim() ? item.gauge.trim().slice(0, 20) : null;
+
     const combinedCents = product.price_per_lf_cents + color.price_per_lf_cents;
     const lineTotalCents = Math.round(lf * combinedCents) + additionalCostsCents;
     totalCents += lineTotalCents;
@@ -148,6 +195,10 @@ export function validateAndBuildQuoteLines(
       source_color_id: color.id,
       product_name: product.name,
       product_image_path: product.image_path,
+      material_type: materialType,
+      width_in: widthIn,
+      gauge,
+      length_ft: lengthFt,
       color_name: color.name,
       color_hex: color.hex_code,
       product_price_per_lf_cents: product.price_per_lf_cents,

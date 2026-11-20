@@ -42,6 +42,7 @@ export interface MetalProduct {
   id: number;
   name: string;
   image_path: string | null;
+  material_type: string | null;
   price_per_lf_cents: number;
   is_available: number;
   sort_order: number;
@@ -51,7 +52,11 @@ export interface MetalProduct {
 export interface QuoteDraftItem {
   rowKey: string;
   product_id: number | null;
+  material_type: string;
   color_id: number | null;
+  width_input: string;
+  gauge_input: string;
+  length_input: string;
   linear_feet_input: string;
   additional_costs_input: string;
   additional_costs_description: string;
@@ -86,6 +91,10 @@ export interface IssuedQuoteItem {
   source_color_id: number | null;
   product_name: string;
   product_image_path: string | null;
+  material_type: string | null;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
   color_name: string;
   color_hex: string;
   product_price_per_lf_cents: number;

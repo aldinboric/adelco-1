@@ -263,7 +263,7 @@ export function MetalColorsView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+            <table className="w-full min-w-max border-collapse text-left text-sm">
               <thead>
                 <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}

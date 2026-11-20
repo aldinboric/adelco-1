@@ -303,6 +303,94 @@ function drawPdfCenteredText(
   doc.text(text, x, textY, options);
 }
 
+// ---------------------------------------------------------------------------
+// Dynamic column fitting: every column is at least as wide as its widest
+// single-line content (so cell text never wraps / gets "squished"), and when
+// that does not fit the portrait page width, the widest columns are shrunk
+// proportionally down to their floor. The table always ends exactly at the
+// right margin. Ellipsis in the cell renderers is the last-resort fallback.
+// ---------------------------------------------------------------------------
+
+interface PdfFitColumnSpec {
+  label: string;
+  align: 'left' | 'right' | 'center';
+  /** Width below which the column is never shrunk. */
+  minW: number;
+  /** Horizontal padding reserved for cell content (both sides). */
+  padX: number;
+  /** Padding used when measuring the header label (defaults to padX). */
+  headerPadX?: number;
+  headerFontSize: number;
+  /** Cell values used to measure the natural single-line content width. */
+  cells: Array<{ text: string; bold?: boolean; fontSize: number }>;
+}
+
+function measurePdfTextWidth(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  bold: boolean,
+  fontSize: number
+): number {
+  doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+  // Multi-line labels (e.g. "Total / lf\n(with Color)") are as wide as their widest line.
+  return text
+    .split('\n')
+    .reduce((m, line) => Math.max(m, doc.widthOfString(line)), 0);
+}
+
+function fitPdfColumns(
+  doc: PDFKit.PDFDocument,
+  usableW: number,
+  specs: PdfFitColumnSpec[]
+): PdfColumn[] {
+  const minWidths = specs.map((s) => s.minW);
+  const widths = specs.map((s) => {
+    const headerPad = s.headerPadX ?? s.padX;
+    const headerW =
+      measurePdfTextWidth(doc, s.label, true, s.headerFontSize) + headerPad;
+    const contentW = s.cells.reduce(
+      (m, c) =>
+        Math.max(
+          m,
+          measurePdfTextWidth(doc, c.text, !!c.bold, c.fontSize) + s.padX
+        ),
+      0
+    );
+    return Math.max(s.minW, headerW, contentW);
+  });
+
+  let sum = widths.reduce((a, b) => a + b, 0);
+  if (sum < usableW) {
+    // Distribute leftover space proportionally so the table still fills the page.
+    const leftover = usableW - sum;
+    for (let i = 0; i < widths.length; i++) widths[i] += (leftover * widths[i]) / sum;
+  } else if (sum > usableW) {
+    // Shrink the widest columns proportionally to their room above the floor.
+    const shrinkable = widths.map((w, i) => Math.max(0, w - minWidths[i]));
+    const totalShrinkable = shrinkable.reduce((a, b) => a + b, 0);
+    if (totalShrinkable > 0) {
+      const f = Math.min(1, (sum - usableW) / totalShrinkable);
+      for (let i = 0; i < widths.length; i++) widths[i] -= shrinkable[i] * f;
+    } else {
+      widths.splice(0, widths.length, ...minWidths);
+    }
+  }
+
+  // Assign x positions; the last column absorbs rounding so the table ends
+  // exactly at 40 + usableW (the right page margin).
+  const cols: PdfColumn[] = [];
+  let x = 40;
+  for (let i = 0; i < specs.length; i++) {
+    const w =
+      i === specs.length - 1
+        ? Math.max(minWidths[i], 40 + usableW - x)
+        : widths[i];
+    cols.push({ label: specs[i].label, x, w, align: specs[i].align });
+    x += w;
+  }
+  return cols;
+}
+
 // ============================================================================
 // 1. METAL COLORS EXPORTS
 // ============================================================================
@@ -399,13 +487,51 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     'Home Services'
   );
 
-  const cols = [
-    { label: 'ID', x: 40, w: 40, align: 'left' as const },
-    { label: 'Color', x: 80, w: 243, align: 'left' as const },
-    { label: 'HEX', x: 323, w: 72, align: 'left' as const },
-    { label: 'Price / lf', x: 395, w: 103, align: 'right' as const },
-    { label: 'Status', x: 498, w: 74, align: 'left' as const },
-  ];
+  const cols = fitPdfColumns(doc, doc.page.width - 80, [
+    {
+      label: 'ID',
+      align: 'left',
+      minW: 30,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: colors.map((_, i) => ({ text: String(i + 1), fontSize: 9.5 })),
+    },
+    {
+      label: 'Color',
+      align: 'left',
+      minW: 90,
+      padX: 42, // swatch box + gap
+      headerFontSize: 9.5,
+      cells: colors.map((c) => ({ text: c.name, fontSize: 9.5 })),
+    },
+    {
+      label: 'HEX',
+      align: 'left',
+      minW: 55,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: colors.map((c) => ({ text: c.hex_code.toUpperCase(), fontSize: 9.5 })),
+    },
+    {
+      label: 'Price / lf',
+      align: 'right',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: colors.map((c) => ({ text: formatCAD(c.price_per_lf_cents), fontSize: 9.5 })),
+    },
+    {
+      label: 'Status',
+      align: 'left',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: [
+        { text: 'Available', fontSize: 9.5 },
+        { text: 'Unavailable', fontSize: 9.5 },
+      ],
+    },
+  ]);
 
   const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
@@ -435,6 +561,8 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     doc.font('Helvetica').fontSize(9.5).fillColor(textColor);
     drawPdfCenteredText(doc, String(i + 1), cols[0].x + 6, y, rowH, {
       width: cols[0].w - 12,
+      height: rowH - 6,
+      ellipsis: true,
     });
     drawPdfCenteredText(doc, item.name, cols[1].x + 36, y, rowH, {
       width: cols[1].w - 42,
@@ -443,10 +571,14 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     });
     drawPdfCenteredText(doc, item.hex_code.toUpperCase(), cols[2].x + 6, y, rowH, {
       width: cols[2].w - 12,
+      height: rowH - 6,
+      ellipsis: true,
     });
     drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
       align: 'right',
+      height: rowH - 6,
+      ellipsis: true,
     });
     doc.fillColor(item.is_available ? BRAND_GREEN : '#DC2626');
     drawPdfCenteredText(
@@ -455,7 +587,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
       cols[4].x + 6,
       y,
       rowH,
-      { width: cols[4].w - 12 }
+      { width: cols[4].w - 12, height: rowH - 6, ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);
@@ -573,13 +705,51 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     'Home Services'
   );
 
-  const cols = [
-    { label: 'ID', x: 40, w: 40, align: 'left' as const },
-    { label: 'Product', x: 80, w: 196, align: 'left' as const },
-    { label: 'Material Type', x: 276, w: 92, align: 'left' as const },
-    { label: 'Price / lf', x: 368, w: 108, align: 'right' as const },
-    { label: 'Status', x: 476, w: 96, align: 'left' as const },
-  ];
+  const cols = fitPdfColumns(doc, doc.page.width - 80, [
+    {
+      label: 'ID',
+      align: 'left',
+      minW: 30,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: products.map((_, i) => ({ text: String(i + 1), fontSize: 9.5 })),
+    },
+    {
+      label: 'Product',
+      align: 'left',
+      minW: 100,
+      padX: 54, // thumbnail + gap
+      headerFontSize: 9.5,
+      cells: products.map((p) => ({ text: p.name, fontSize: 9.5 })),
+    },
+    {
+      label: 'Material Type',
+      align: 'left',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: products.map((p) => ({ text: p.material_type?.trim() || '—', fontSize: 9.5 })),
+    },
+    {
+      label: 'Price / lf',
+      align: 'right',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: products.map((p) => ({ text: formatCAD(p.price_per_lf_cents), fontSize: 9.5 })),
+    },
+    {
+      label: 'Status',
+      align: 'left',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: [
+        { text: 'Available', fontSize: 9.5 },
+        { text: 'Unavailable', fontSize: 9.5 },
+      ],
+    },
+  ]);
 
   const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
@@ -615,6 +785,8 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     doc.font('Helvetica').fontSize(9.5).fillColor(textColor);
     drawPdfCenteredText(doc, String(i + 1), cols[0].x + 6, y, rowH, {
       width: cols[0].w - 12,
+      height: rowH - 8,
+      ellipsis: true,
     });
     drawPdfCenteredText(doc, item.name, cols[1].x + 48, y, rowH, {
       width: cols[1].w - 54,
@@ -629,6 +801,8 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
       align: 'right',
+      height: rowH - 8,
+      ellipsis: true,
     });
     doc.fillColor(item.is_available ? BRAND_GREEN : '#DC2626');
     drawPdfCenteredText(
@@ -637,7 +811,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       cols[4].x + 6,
       y,
       rowH,
-      { width: cols[4].w - 12 }
+      { width: cols[4].w - 12, height: rowH - 8, ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);
@@ -995,15 +1169,99 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   y += 64;
 
-  const cols = [
-    { label: '#', x: 40, w: 22, align: 'left' as const, twoLine: false },
-    { label: 'Product', x: 62, w: 190, align: 'left' as const, twoLine: false },
-    { label: 'Color', x: 252, w: 96, align: 'left' as const, twoLine: false },
-    { label: 'Total / lf\n(with Color)', x: 348, w: 62, align: 'right' as const, twoLine: true },
-    { label: 'Linear\nFeet', x: 410, w: 50, align: 'right' as const, twoLine: true },
-    { label: 'Additional\nCosts', x: 460, w: 58, align: 'right' as const, twoLine: true },
-    { label: 'Total\nPrice', x: 518, w: 54, align: 'right' as const, twoLine: true },
-  ];
+  const cols = fitPdfColumns(doc, doc.page.width - 80, [
+    {
+      label: '#',
+      align: 'left',
+      minW: 24,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.map((_, i) => ({ text: String(i + 1), fontSize: 8.5 })),
+    },
+    {
+      label: 'Product',
+      align: 'left',
+      minW: 130,
+      padX: 44, // thumbnail + gap
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.flatMap((it) => {
+        const gaugeLabel = formatGaugeLabel(it.gauge);
+        const materialLabel = it.material_type?.trim() || null;
+        const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join('. ');
+        const measuresLabel = formatMeasureDimensions(it.width_in, it.length_ft);
+        return [
+          { text: it.product_name, bold: true, fontSize: 8.3 },
+          ...(detailLine ? [{ text: detailLine, fontSize: 7.6 }] : []),
+          ...(measuresLabel ? [{ text: measuresLabel, bold: true, fontSize: 7.6 }] : []),
+          { text: `(${formatCAD(it.product_price_per_lf_cents)})`, fontSize: 7.6 },
+        ];
+      }),
+    },
+    {
+      label: 'Color',
+      align: 'left',
+      minW: 60,
+      padX: 29, // swatch box + gap
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.flatMap((it) => [
+        { text: it.color_name, fontSize: 8.3 },
+        { text: `(+${formatCAD(it.color_price_per_lf_cents)})`, fontSize: 7.6 },
+      ]),
+    },
+    {
+      label: 'Total / lf\n(with Color)',
+      align: 'right',
+      minW: 50,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.map((it) => ({
+        text: formatCAD(it.combined_price_per_lf_cents),
+        bold: true,
+        fontSize: 8.5,
+      })),
+    },
+    {
+      label: 'Linear\nFeet',
+      align: 'right',
+      minW: 40,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.map((it) => ({ text: String(it.linear_feet), fontSize: 8.5 })),
+    },
+    {
+      label: 'Additional\nCosts',
+      align: 'right',
+      minW: 50,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.flatMap((it) => {
+        const desc = it.additional_costs_description?.trim();
+        return [
+          ...(desc ? [{ text: desc, fontSize: 7 }] : []),
+          { text: formatCAD(it.additional_costs_cents ?? 0), fontSize: 8.5 },
+        ];
+      }),
+    },
+    {
+      label: 'Total\nPrice',
+      align: 'right',
+      minW: 50,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.map((it) => ({
+        text: formatCAD(it.line_total_cents),
+        bold: true,
+        fontSize: 8.8,
+      })),
+    },
+  ]);
 
   const drawHeader = (topY: number) =>
     drawPdfTableHeader(doc, topY, 28, cols, { fontSize: 8, padX: 4, lineGap: 1 });
@@ -1030,6 +1288,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     drawPdfCenteredText(doc, String(i + 1), cols[0].x + 4, y, rowH, {
       width: cols[0].w - 8,
       align: 'left',
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     // Col 1: Product (thumbnail + vertically centered name + ($price) stack)
@@ -1139,6 +1399,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     drawPdfCenteredText(doc, formatCAD(item.combined_price_per_lf_cents), cols[3].x + 4, y, rowH, {
       width: cols[3].w - 8,
       align: 'right',
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     // Col 4: Linear Feet
@@ -1146,6 +1408,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     drawPdfCenteredText(doc, String(item.linear_feet), cols[4].x + 4, y, rowH, {
       width: cols[4].w - 8,
       align: 'right',
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     // Col 5: Additional Costs (vertically centered description + amount stack)
@@ -1188,6 +1452,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     drawPdfCenteredText(doc, formatCAD(item.line_total_cents), cols[6].x + 4, y, rowH, {
       width: cols[6].w - 8,
       align: 'right',
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     drawPdfRowBorders(doc, y, rowH, cols);
@@ -1202,8 +1468,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   }
 
   const footerH = 30;
-  doc.rect(40, y, 400, footerH).fill(NEUTRAL_BG);
-  doc.rect(440, y, 132, footerH).fill(BRAND_GREEN);
+  doc.rect(40, y, cols[5].x - 40, footerH).fill(NEUTRAL_BG);
+  doc.rect(cols[5].x, y, doc.page.width - 40 - cols[5].x, footerH).fill(BRAND_GREEN);
 
   doc
     .moveTo(40, y)
@@ -1228,7 +1494,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     50,
     y,
     footerH,
-    { width: 380 }
+    { width: cols[5].x - 60, height: footerH - 6, ellipsis: true }
   );
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
@@ -1387,12 +1653,40 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
     'Home Services'
   );
 
-  const cols = [
-    { label: 'Quote Number', x: 40, w: 130, align: 'left' as const },
-    { label: 'Date', x: 170, w: 100, align: 'left' as const },
-    { label: 'Customer', x: 270, w: 192, align: 'left' as const },
-    { label: 'Total (CAD)', x: 462, w: 110, align: 'right' as const },
-  ];
+  const cols = fitPdfColumns(doc, doc.page.width - 80, [
+    {
+      label: 'Quote Number',
+      align: 'left',
+      minW: 90,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: quotes.map((q) => ({ text: q.quote_number, bold: true, fontSize: 9.5 })),
+    },
+    {
+      label: 'Date',
+      align: 'left',
+      minW: 70,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: quotes.map((q) => ({ text: q.quote_date, fontSize: 9.5 })),
+    },
+    {
+      label: 'Customer',
+      align: 'left',
+      minW: 90,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: quotes.map((q) => ({ text: q.customer_name || '—', fontSize: 9.5 })),
+    },
+    {
+      label: 'Total (CAD)',
+      align: 'right',
+      minW: 80,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: quotes.map((q) => ({ text: formatCAD(q.total_cents), bold: true, fontSize: 9.5 })),
+    },
+  ]);
 
   const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
@@ -1415,11 +1709,15 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
     doc.font('Helvetica-Bold').fontSize(9.5).fillColor(BRAND_BLUE);
     drawPdfCenteredText(doc, q.quote_number, cols[0].x + 6, y, rowH, {
       width: cols[0].w - 12,
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     doc.font('Helvetica').fontSize(9.5).fillColor(TEXT_DARK);
     drawPdfCenteredText(doc, q.quote_date, cols[1].x + 6, y, rowH, {
       width: cols[1].w - 12,
+      height: rowH - 6,
+      ellipsis: true,
     });
     drawPdfCenteredText(doc, q.customer_name || '—', cols[2].x + 6, y, rowH, {
       width: cols[2].w - 12,
@@ -1430,6 +1728,8 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
     drawPdfCenteredText(doc, formatCAD(q.total_cents), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
       align: 'right',
+      height: rowH - 6,
+      ellipsis: true,
     });
 
     drawPdfRowBorders(doc, y, rowH, cols);
@@ -1439,15 +1739,21 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
 
   y += 10;
   const regFooterH = 28;
-  doc.rect(352, y, 220, regFooterH).fill(BRAND_GREEN);
+  const footerX = cols[2].x;
+  const footerW = cols[2].w + cols[3].w;
+  doc.rect(footerX, y, footerW, regFooterH).fill(BRAND_GREEN);
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, 'REGISTER TOTAL (CAD)', 362, y, regFooterH, {
-    width: 115,
+  drawPdfCenteredText(doc, 'REGISTER TOTAL (CAD)', cols[2].x + 10, y, regFooterH, {
+    width: cols[2].w - 20,
     align: 'left',
+    height: regFooterH - 6,
+    ellipsis: true,
   });
-  drawPdfCenteredText(doc, formatCAD(sumCents), 472, y, regFooterH, {
-    width: 90,
+  drawPdfCenteredText(doc, formatCAD(sumCents), cols[3].x + 10, y, regFooterH, {
+    width: cols[3].w - 20,
     align: 'right',
+    height: regFooterH - 6,
+    ellipsis: true,
   });
 
   return pdfToBuffer(doc);

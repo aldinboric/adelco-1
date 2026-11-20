@@ -1054,7 +1054,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     const gaugeLabel = formatGaugeLabel(item.gauge);
     const materialLabel = item.material_type?.trim() || null;
     const measuresLabel = formatMeasureDimensions(item.width_in, item.length_ft);
-    const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join(' · ');
+    const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join('. ');
     const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)})`;
 
     doc.font('Helvetica-Bold').fontSize(8.3);

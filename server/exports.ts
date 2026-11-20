@@ -10,6 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
+import { formatCAD } from '../shared/format.ts';
+import { hexToArgb, normalizeHexDisplay } from '../shared/hex.ts';
 import {
   type IssuedQuoteRow,
   type MetalColorRow,
@@ -43,37 +45,32 @@ async function getCompanyLogoPng(): Promise<Buffer | null> {
   }
 }
 
+// Small LRU-ish cache so repeated exports don't re-run sharp on the same file.
+const imageBufferCache = new Map<string, Buffer | null>();
+const IMAGE_CACHE_MAX = 200;
+
 async function loadImageBuffer(relPath: string | null | undefined, size = 72): Promise<Buffer | null> {
+  const key = `${size}:${relPath ?? ''}`;
+  if (imageBufferCache.has(key)) {
+    return imageBufferCache.get(key) ?? null;
+  }
   const full = resolveSafeImagePath(relPath);
-  if (!full) return null;
-  try {
-    return await sharp(full)
-      .resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
-      .png()
-      .toBuffer();
-  } catch {
-    return null;
+  let buf: Buffer | null = null;
+  if (full) {
+    try {
+      buf = await sharp(full)
+        .resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .png()
+        .toBuffer();
+    } catch {
+      buf = null;
+    }
   }
-}
-
-function formatCAD(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-CA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function hexToArgb(hex: string): string {
-  const clean = hex.replace('#', '').trim().toUpperCase();
-  if (/^[0-9A-F]{6}$/.test(clean)) {
-    return `FF${clean}`;
+  if (imageBufferCache.size >= IMAGE_CACHE_MAX) {
+    imageBufferCache.clear();
   }
-  return 'FFD4D4D8';
-}
-
-function normalizeHex(hex: string): string {
-  const clean = hex.replace('#', '').trim().toUpperCase();
-  return /^[0-9A-F]{6}$/.test(clean) ? `#${clean}` : '#D4D4D8';
+  imageBufferCache.set(key, buf);
+  return buf;
 }
 
 function sanitizeExcelText(value: string): string {
@@ -233,6 +230,54 @@ function drawPdfColumnDividers(
   doc.restore();
 }
 
+export interface PdfColumn {
+  label: string;
+  x: number;
+  w: number;
+  align: 'left' | 'right' | 'center';
+}
+
+/** Shared blue table header renderer used by all PDF exports. */
+function drawPdfTableHeader(
+  doc: PDFKit.PDFDocument,
+  topY: number,
+  headerH: number,
+  cols: PdfColumn[],
+  opts?: { fontSize?: number; padX?: number; lineGap?: number; dividerHex?: string }
+): number {
+  const fontSize = opts?.fontSize ?? 9.5;
+  const padX = opts?.padX ?? 6;
+  const dividerHex = opts?.dividerHex ?? '#3863A8';
+  doc.rect(40, topY, doc.page.width - 80, headerH).fill(BRAND_BLUE);
+  drawPdfColumnDividers(doc, topY, headerH, cols, dividerHex);
+  doc.font('Helvetica-Bold').fontSize(fontSize).fillColor('#FFFFFF');
+  for (const c of cols) {
+    drawPdfCenteredText(doc, c.label, c.x + padX, topY, headerH, {
+      width: c.w - padX * 2,
+      align: c.align,
+      ...(opts?.lineGap ? { lineGap: opts.lineGap } : {}),
+    });
+  }
+  return topY + headerH;
+}
+
+/** Shared row border renderer: column dividers + bottom line. */
+function drawPdfRowBorders(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  rowH: number,
+  cols: ReadonlyArray<{ x: number; w: number }>,
+  dividerHex = '#E2E8F0'
+): void {
+  drawPdfColumnDividers(doc, y, rowH, cols, dividerHex);
+  doc
+    .moveTo(40, y + rowH)
+    .lineTo(doc.page.width - 40, y + rowH)
+    .lineWidth(0.5)
+    .strokeColor(dividerHex)
+    .stroke();
+}
+
 function measurePdfVisualTextHeight(
   doc: PDFKit.PDFDocument,
   text: string,
@@ -362,19 +407,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     { label: 'Status', x: 498, w: 74, align: 'left' as const },
   ];
 
-  const drawHeader = (topY: number) => {
-    const headerH = 26;
-    doc.rect(40, topY, doc.page.width - 80, headerH).fill(BRAND_BLUE);
-    drawPdfColumnDividers(doc, topY, headerH, cols, '#3863A8');
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
-    for (const c of cols) {
-      drawPdfCenteredText(doc, c.label, c.x + 6, topY, headerH, {
-        width: c.w - 12,
-        align: c.align,
-      });
-    }
-    return topY + headerH;
-  };
+  const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
   y = drawHeader(y);
 
@@ -395,7 +428,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     doc.lineWidth(0.5).strokeColor('#CBD5E1');
     doc
       .rect(cols[1].x + 6, y + (rowH - 16) / 2, 24, 16)
-      .fillAndStroke(normalizeHex(item.hex_code), '#CBD5E1');
+      .fillAndStroke(normalizeHexDisplay(item.hex_code), '#CBD5E1');
     doc.restore();
 
     const textColor = item.is_available ? TEXT_DARK : '#64748B';
@@ -425,13 +458,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
       { width: cols[4].w - 12 }
     );
 
-    drawPdfColumnDividers(doc, y, rowH, cols, '#E2E8F0');
-    doc
-      .moveTo(40, y + rowH)
-      .lineTo(doc.page.width - 40, y + rowH)
-      .lineWidth(0.5)
-      .strokeColor('#E2E8F0')
-      .stroke();
+    drawPdfRowBorders(doc, y, rowH, cols);
 
     y += rowH;
   }
@@ -554,19 +581,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     { label: 'Status', x: 476, w: 96, align: 'left' as const },
   ];
 
-  const drawHeader = (topY: number) => {
-    const headerH = 26;
-    doc.rect(40, topY, doc.page.width - 80, headerH).fill(BRAND_BLUE);
-    drawPdfColumnDividers(doc, topY, headerH, cols, '#3863A8');
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
-    for (const c of cols) {
-      drawPdfCenteredText(doc, c.label, c.x + 6, topY, headerH, {
-        width: c.w - 12,
-        align: c.align,
-      });
-    }
-    return topY + headerH;
-  };
+  const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
   y = drawHeader(y);
 
@@ -625,13 +640,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       { width: cols[4].w - 12 }
     );
 
-    drawPdfColumnDividers(doc, y, rowH, cols, '#E2E8F0');
-    doc
-      .moveTo(40, y + rowH)
-      .lineTo(doc.page.width - 40, y + rowH)
-      .lineWidth(0.5)
-      .strokeColor('#E2E8F0')
-      .stroke();
+    drawPdfRowBorders(doc, y, rowH, cols);
 
     y += rowH;
   }
@@ -996,20 +1005,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     { label: 'Total\nPrice', x: 518, w: 54, align: 'right' as const, twoLine: true },
   ];
 
-  const headerH = 28;
-  const drawHeader = (topY: number) => {
-    doc.rect(40, topY, doc.page.width - 80, headerH).fill(BRAND_BLUE);
-    drawPdfColumnDividers(doc, topY, headerH, cols, '#3863A8');
-    doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
-    for (const c of cols) {
-      drawPdfCenteredText(doc, c.label, c.x + 4, topY, headerH, {
-        width: c.w - 8,
-        align: c.align,
-        lineGap: 1,
-      });
-    }
-    return topY + headerH;
-  };
+  const drawHeader = (topY: number) =>
+    drawPdfTableHeader(doc, topY, 28, cols, { fontSize: 8, padX: 4, lineGap: 1 });
 
   y = drawHeader(y);
 
@@ -1111,7 +1108,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     doc.lineWidth(0.5).strokeColor('#CBD5E1');
     doc
       .rect(cols[2].x + 5, y + (rowH - 13) / 2, 15, 13)
-      .fillAndStroke(normalizeHex(item.color_hex), '#CBD5E1');
+      .fillAndStroke(normalizeHexDisplay(item.color_hex), '#CBD5E1');
     doc.restore();
 
     const colorTextW = cols[2].w - 29;
@@ -1193,13 +1190,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       align: 'right',
     });
 
-    drawPdfColumnDividers(doc, y, rowH, cols, '#E2E8F0');
-    doc
-      .moveTo(40, y + rowH)
-      .lineTo(doc.page.width - 40, y + rowH)
-      .lineWidth(0.5)
-      .strokeColor('#E2E8F0')
-      .stroke();
+    drawPdfRowBorders(doc, y, rowH, cols);
 
     y += rowH;
   }
@@ -1403,19 +1394,7 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
     { label: 'Total (CAD)', x: 462, w: 110, align: 'right' as const },
   ];
 
-  const drawHeader = (topY: number) => {
-    const headerH = 26;
-    doc.rect(40, topY, doc.page.width - 80, headerH).fill(BRAND_BLUE);
-    drawPdfColumnDividers(doc, topY, headerH, cols, '#3863A8');
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
-    for (const c of cols) {
-      drawPdfCenteredText(doc, c.label, c.x + 6, topY, headerH, {
-        width: c.w - 12,
-        align: c.align,
-      });
-    }
-    return topY + headerH;
-  };
+  const drawHeader = (topY: number) => drawPdfTableHeader(doc, topY, 26, cols);
 
   y = drawHeader(y);
 
@@ -1453,13 +1432,7 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
       align: 'right',
     });
 
-    drawPdfColumnDividers(doc, y, rowH, cols, '#E2E8F0');
-    doc
-      .moveTo(40, y + rowH)
-      .lineTo(doc.page.width - 40, y + rowH)
-      .lineWidth(0.5)
-      .strokeColor('#E2E8F0')
-      .stroke();
+    drawPdfRowBorders(doc, y, rowH, cols);
 
     y += rowH;
   }

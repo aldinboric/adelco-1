@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  AlertTriangle,
   Archive,
   CheckCircle2,
   DatabaseBackup,
@@ -12,16 +11,33 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AdminView } from './components/AdminView';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfirmModal } from './components/ConfirmModal';
-import { CustomerQuoteView } from './components/CustomerQuoteView';
-import { IssuedQuotesView } from './components/IssuedQuotesView';
+import { ForcePasswordChangeView } from './components/ForcePasswordChangeView';
 import { LoginView } from './components/LoginView';
-import { MetalColorsView } from './components/MetalColorsView';
-import { MetalProductsView } from './components/MetalProductsView';
 import { QuotePrintModal } from './components/QuotePrintModal';
 import { SettingsBackupModal } from './components/SettingsBackupModal';
+
+// Heavy workspace views are code-split and loaded on demand.
+const AdminView = lazy(() => import('./components/AdminView').then((m) => ({ default: m.AdminView })));
+const CustomerQuoteView = lazy(() =>
+  import('./components/CustomerQuoteView').then((m) => ({ default: m.CustomerQuoteView }))
+);
+const IssuedQuotesView = lazy(() =>
+  import('./components/IssuedQuotesView').then((m) => ({ default: m.IssuedQuotesView }))
+);
+const MetalColorsView = lazy(() =>
+  import('./components/MetalColorsView').then((m) => ({ default: m.MetalColorsView }))
+);
+const MetalProductsView = lazy(() =>
+  import('./components/MetalProductsView').then((m) => ({ default: m.MetalProductsView }))
+);
+
+const VIEW_FALLBACK = (
+  <div className="flex items-center justify-center py-16 text-xs font-medium text-slate-500">
+    Loading view...
+  </div>
+);
 import type {
   AppTab,
   AuthUser,
@@ -77,7 +93,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
-  const [defaultPwdBannerDismissed, setDefaultPwdBannerDismissed] = useState(false);
 
   const [activeTab, setActiveTab] = useState<AppTab>('quote');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -113,7 +128,6 @@ export default function App() {
     setDraft(createEmptyDraft());
     setColors([]);
     setProducts([]);
-    setDefaultPwdBannerDismissed(false);
   }, []);
 
   // Register global 401 session-expiration handler
@@ -241,7 +255,6 @@ export default function App() {
 
   const handleLoginSuccess = (user: AuthUser) => {
     setSessionNotice(null);
-    setDefaultPwdBannerDismissed(false);
     setCurrentUser(user);
     if (user.role === 'admin' || user.permissions.customer_quote) {
       setActiveTab('quote');
@@ -368,6 +381,12 @@ export default function App() {
     return <LoginView onLoginSuccess={handleLoginSuccess} sessionNotice={sessionNotice} />;
   }
 
+  // Accounts flagged with must_change_password (e.g. the seeded default admin) are locked
+  // to this screen until they set a new password — enforced server-side as well.
+  if (currentUser.must_change_password) {
+    return <ForcePasswordChangeView currentUser={currentUser} onDone={setCurrentUser} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-slate-900 flex">
       {/* Mobile Sidebar Backdrop */}
@@ -489,40 +508,6 @@ export default function App() {
         {/* Active View Canvas */}
         <main className="flex-1 p-6">
           <div className="mx-auto max-w-[1280px] space-y-4">
-            {/* Non-blocking recommendation when admin still uses default password */}
-            {isAdmin &&
-              currentUser.must_change_password &&
-              !defaultPwdBannerDismissed &&
-              activeTab !== 'admin' && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                  <div className="flex items-center gap-2.5">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                    <span>
-                      <strong>Security recommendation:</strong> You are signed in with the default{' '}
-                      <span className="font-mono font-semibold">admin</span> password. Update your
-                      username and set a strong password in the Admin tab.
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => requestTabChange('admin')}
-                      className="rounded border border-amber-400 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 whitespace-nowrap"
-                    >
-                      Update Credentials
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDefaultPwdBannerDismissed(true)}
-                      className="rounded p-1 text-amber-700 hover:bg-amber-100"
-                      aria-label="Dismiss security notice"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
             {navItems.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white px-6 py-14 text-center">
                 <h2 className="text-sm font-semibold text-slate-900">No Modules Enabled</h2>
@@ -531,7 +516,7 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <>
+              <Suspense fallback={VIEW_FALLBACK}>
                 {activeTab === 'quote' && canCustomerQuote && (
                   <CustomerQuoteView
                     draft={draft}
@@ -589,7 +574,7 @@ export default function App() {
                     onNotify={notify}
                   />
                 )}
-              </>
+              </Suspense>
             )}
           </div>
         </main>

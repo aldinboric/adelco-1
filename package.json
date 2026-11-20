@@ -19,7 +19,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "adm-zip": "^0.6.1",
     "better-sqlite3": "^13.2.0",
-    "documonster": "^0.26.0",
+    "documonster": "^0.27.0",
     "express": "^5.3.0",
     "lucide-react": "^1.75.0",
     "multer": "^2.5.0",
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^22.14.0",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",

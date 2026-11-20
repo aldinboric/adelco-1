@@ -92,6 +92,7 @@ export function getDb(): Database.Database {
     dbInstance = new Database(DB_PATH);
     dbInstance.pragma('journal_mode = WAL');
     dbInstance.pragma('foreign_keys = ON');
+    dbInstance.pragma('busy_timeout = 5000');
     initSchema(dbInstance);
   }
   return dbInstance;
@@ -107,6 +108,20 @@ export function closeDb(): void {
 export function reloadDb(): Database.Database {
   closeDb();
   return getDb();
+}
+
+// Table/column names passed here are internal constants only (never user input).
+function ensureColumn(
+  db: Database.Database,
+  table: string,
+  column: string,
+  ddl: string,
+  after?: () => void
+): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl};`);
+  after?.();
 }
 
 function initSchema(db: Database.Database): void {
@@ -201,46 +216,29 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON issued_quote_items(quote_id);
+    CREATE INDEX IF NOT EXISTS idx_issued_quotes_date ON issued_quotes(quote_date);
   `);
 
-  const itemCols = db.prepare('PRAGMA table_info(issued_quote_items)').all() as Array<{ name: string }>;
-  if (!itemCols.some((c) => c.name === 'additional_costs_cents')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN additional_costs_cents INTEGER NOT NULL DEFAULT 0;');
-  }
-  if (!itemCols.some((c) => c.name === 'additional_costs_description')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN additional_costs_description TEXT;');
-  }
-  if (!itemCols.some((c) => c.name === 'material_type')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN material_type TEXT;');
-  }
-  if (!itemCols.some((c) => c.name === 'width_in')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN width_in REAL;');
-  }
-  if (!itemCols.some((c) => c.name === 'gauge')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN gauge TEXT;');
-  }
-  if (!itemCols.some((c) => c.name === 'length_ft')) {
-    db.exec('ALTER TABLE issued_quote_items ADD COLUMN length_ft REAL;');
-  }
+  ensureColumn(db, 'issued_quote_items', 'additional_costs_cents', 'additional_costs_cents INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'issued_quote_items', 'additional_costs_description', 'additional_costs_description TEXT');
+  ensureColumn(db, 'issued_quote_items', 'material_type', 'material_type TEXT');
+  ensureColumn(db, 'issued_quote_items', 'width_in', 'width_in REAL');
+  ensureColumn(db, 'issued_quote_items', 'gauge', 'gauge TEXT');
+  ensureColumn(db, 'issued_quote_items', 'length_ft', 'length_ft REAL');
 
   // sort_order migrations for drag & drop reordering (backfill preserves id order)
-  const colorCols = db.prepare('PRAGMA table_info(metal_colors)').all() as Array<{ name: string }>;
-  if (!colorCols.some((c) => c.name === 'sort_order')) {
-    db.exec('ALTER TABLE metal_colors ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
+  ensureColumn(db, 'metal_colors', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0', () => {
     db.exec(
       'UPDATE metal_colors SET sort_order = (SELECT COUNT(*) FROM metal_colors AS c2 WHERE c2.id < metal_colors.id);'
     );
-  }
-  const productCols = db.prepare('PRAGMA table_info(metal_products)').all() as Array<{ name: string }>;
-  if (!productCols.some((c) => c.name === 'material_type')) {
-    db.exec('ALTER TABLE metal_products ADD COLUMN material_type TEXT;');
-  }
-  if (!productCols.some((c) => c.name === 'sort_order')) {
-    db.exec('ALTER TABLE metal_products ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
+  });
+  ensureColumn(db, 'metal_products', 'material_type', 'material_type TEXT');
+  ensureColumn(db, 'metal_products', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0', () => {
     db.exec(
       'UPDATE metal_products SET sort_order = (SELECT COUNT(*) FROM metal_products AS p2 WHERE p2.id < metal_products.id);'
     );
-  }
+  });
 }
 
 async function createProfileThumbnail(filename: string, svgMarkup: string): Promise<string> {

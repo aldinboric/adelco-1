@@ -7,6 +7,7 @@ import {
   ensureInitialAdminUser,
   isAiStudioIframeHost,
   isHttpsRequest,
+  rateLimitApiMutations,
   verifySameOriginForMutations,
 } from './server/auth.ts';
 import { ensureDataDirs, getDb, seedInitialDataIfEmpty } from './server/db.ts';
@@ -37,6 +38,7 @@ async function startServer() {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
 
     const iframeHost = isAiStudioIframeHost(req);
     if (!iframeHost) {
@@ -71,7 +73,9 @@ async function startServer() {
     next();
   });
 
-  // Strict no-store caching and Same-Origin CSRF validation on all /api/* routes
+  // Global rate limit on API mutations + strict no-store caching + Same-Origin CSRF
+  // validation on all /api/* routes
+  app.use('/api', rateLimitApiMutations);
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
@@ -98,12 +102,25 @@ async function startServer() {
   const httpServer = http.createServer(app);
 
   if (isProduction) {
-    app.use(express.static(distDir));
+    // Hashed /assets/* files are immutable; index.html must always be revalidated.
+    app.use(
+      express.static(distDir, {
+        index: false,
+        setHeaders(res, filePath) {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          } else {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
     app.use((req: Request, res: Response, next: NextFunction) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         next();
         return;
       }
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
@@ -158,7 +175,7 @@ async function startServer() {
       return;
     }
 
-    if (err instanceof Error && err.message === 'Only image files are allowed.') {
+    if (err instanceof Error && err.message === 'Only PNG, JPEG, WebP or GIF images are allowed.') {
       res.status(400).json({ error: err.message });
       return;
     }

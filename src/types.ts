@@ -1,19 +1,8 @@
 export type AppTab = 'quote' | 'issued' | 'products' | 'colors' | 'admin';
 
-export type UserRole = 'admin' | 'user';
-
-export interface UserPermissions {
-  customer_quote: boolean;
-  issued_quotes_view: boolean;
-  issued_quotes_manage: boolean;
-  products_view: boolean;
-  products_manage: boolean;
-  colors_view: boolean;
-  colors_manage: boolean;
-  catalog_reorder: boolean;
-  exports: boolean;
-  backup_settings: boolean;
-}
+// Role & permission types come from the shared module (single source of truth with the backend).
+import type { UserPermissions, UserRole } from '../shared/permissions.ts';
+export type { PermissionKey, UserPermissions, UserRole } from '../shared/permissions.ts';
 
 export interface AuthUser {
   id: number;

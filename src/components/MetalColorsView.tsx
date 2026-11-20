@@ -9,7 +9,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useReorderableList } from '../hooks/useReorderableList';
 import type { MetalColor } from '../types';
 import { apiFetch, downloadProtectedFile } from '../utils/api';
 import {
@@ -51,45 +52,15 @@ export function MetalColorsView({
   const [deleting, setDeleting] = useState(false);
 
   // Locally reordered list (optimistic drag & drop, synced from server props)
-  const [orderedColors, setOrderedColors] = useState<MetalColor[]>(colors);
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [overId, setOverId] = useState<number | null>(null);
-  const [savingOrder, setSavingOrder] = useState(false);
-
-  useEffect(() => {
-    setOrderedColors(colors);
-  }, [colors]);
-
-  const handleDrop = async (targetId: number) => {
-    if (!canReorder || dragId === null || dragId === targetId || savingOrder) return;
-    const fromIdx = orderedColors.findIndex((c) => c.id === dragId);
-    const toIdx = orderedColors.findIndex((c) => c.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-
-    const next = [...orderedColors];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    setOrderedColors(next);
-    setSavingOrder(true);
-    try {
-      const res = await apiFetch('/api/colors/reorder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: next.map((c) => c.id) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save order.');
-      await onRefresh();
-      onNotify('success', 'Color order saved.');
-    } catch (err) {
-      setOrderedColors(colors);
-      onNotify('error', err instanceof Error ? err.message : 'Reorder failed.');
-    } finally {
-      setDragId(null);
-      setOverId(null);
-      setSavingOrder(false);
-    }
-  };
+  const {
+    ordered: orderedColors,
+    dragId,
+    setDragId,
+    overId,
+    setOverId,
+    savingOrder,
+    handleDrop,
+  } = useReorderableList(colors, '/api/colors/reorder', 'Color', canReorder, onRefresh, onNotify);
 
   const isModalOpen = addModalOpen || editingColor !== null;
 

@@ -1,8 +1,11 @@
 import type { Response } from 'express';
+import { normalizeHexStrict } from '../shared/hex.ts';
 import { getDb, type MetalColorRow, type MetalProductRow } from './db.ts';
 
-const HEX_REGEX = /^#[0-9A-Fa-f]{6}$/;
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/** User-facing validation error — safe to send to the client. Anything else is logged server-side only. */
+export class ValidationError extends Error {}
 
 export const MAX_PRICE_CENTS = 100_000_000; // $1,000,000.00 max
 export const MAX_LINEAR_FEET = 1_000_000;
@@ -21,11 +24,7 @@ export function parsePositiveInt(raw: unknown): number | null {
 }
 
 export function normalizeHex(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-  if (!HEX_REGEX.test(withHash)) return null;
-  return withHash.toUpperCase();
+  return normalizeHexStrict(raw);
 }
 
 export function parseCents(raw: unknown): number | null {
@@ -47,11 +46,11 @@ export function parseIsoDate(raw: unknown): string {
   if (typeof raw !== 'string') return today;
   const trimmed = raw.trim();
   if (!ISO_DATE_REGEX.test(trimmed)) {
-    throw new Error('Quote date must be in YYYY-MM-DD format.');
+    throw new ValidationError('Quote date must be in YYYY-MM-DD format.');
   }
   const parsed = new Date(`${trimmed}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== trimmed) {
-    throw new Error('Invalid calendar date.');
+    throw new ValidationError('Invalid calendar date.');
   }
   return trimmed;
 }
@@ -88,10 +87,10 @@ export function validateAndBuildQuoteLines(
 ): { items: ValidatedQuoteLine[]; totalCents: number } {
   const rawItems = Array.isArray(rawItemsInput) ? rawItemsInput : [];
   if (rawItems.length === 0) {
-    throw new Error('Add at least one complete product line.');
+    throw new ValidationError('Add at least one complete product line.');
   }
   if (rawItems.length > MAX_QUOTE_ITEMS) {
-    throw new Error(`A single quote cannot exceed ${MAX_QUOTE_ITEMS} line items.`);
+    throw new ValidationError(`A single quote cannot exceed ${MAX_QUOTE_ITEMS} line items.`);
   }
 
   const db = getDb();
@@ -106,12 +105,12 @@ export function validateAndBuildQuoteLines(
     const productId = parsePositiveInt(item.product_id);
     const colorId = parsePositiveInt(item.color_id);
     if (!productId || !colorId) {
-      throw new Error('Every quote line must have both a product and a color selected.');
+      throw new ValidationError('Every quote line must have both a product and a color selected.');
     }
 
     const lf = Number(item.linear_feet);
     if (!Number.isFinite(lf) || lf <= 0 || lf > MAX_LINEAR_FEET) {
-      throw new Error(`Every quote line must have Linear Feet between 0 and ${MAX_LINEAR_FEET}.`);
+      throw new ValidationError(`Every quote line must have Linear Feet between 0 and ${MAX_LINEAR_FEET}.`);
     }
 
     let additionalCostsCents = 0;
@@ -122,7 +121,7 @@ export function validateAndBuildQuoteLines(
     ) {
       const parsedAdd = parseCents(item.additional_costs_cents);
       if (parsedAdd === null) {
-        throw new Error('Additional Costs must be a valid non-negative amount.');
+        throw new ValidationError('Additional Costs must be a valid non-negative amount.');
       }
       additionalCostsCents = parsedAdd;
     }
@@ -137,10 +136,10 @@ export function validateAndBuildQuoteLines(
     const color = getColor.get(colorId) as MetalColorRow | undefined;
 
     if (!product || (options.requireAvailable && !product.is_available)) {
-      throw new Error('One or more selected products are unavailable or deleted.');
+      throw new ValidationError('One or more selected products are unavailable or deleted.');
     }
     if (!color || (options.requireAvailable && !color.is_available)) {
-      throw new Error('One or more selected colors are unavailable or deleted.');
+      throw new ValidationError('One or more selected colors are unavailable or deleted.');
     }
 
     // Material type: comma-separated list on the product; selection must be one of them.
@@ -154,10 +153,10 @@ export function validateAndBuildQuoteLines(
     let materialType: string | null = rawMaterialType || null;
     if (availableMaterials.length > 0) {
       if (!materialType) {
-        throw new Error(`Every quote line for "${product.name}" must have a Material Type selected.`);
+        throw new ValidationError(`Every quote line for "${product.name}" must have a Material Type selected.`);
       }
       if (!availableMaterials.includes(materialType)) {
-        throw new Error(
+        throw new ValidationError(
           `Material Type "${materialType}" is not defined for product "${product.name}".`
         );
       }
@@ -171,7 +170,7 @@ export function validateAndBuildQuoteLines(
     if (item.width_in !== undefined && item.width_in !== null && item.width_in !== '') {
       const w = Number(item.width_in);
       if (!Number.isFinite(w) || w <= 0 || w > MAX_LINEAR_FEET) {
-        throw new Error('Width (in) must be a positive number.');
+        throw new ValidationError('Width (in) must be a positive number.');
       }
       widthIn = w;
     }
@@ -179,7 +178,7 @@ export function validateAndBuildQuoteLines(
     if (item.length_ft !== undefined && item.length_ft !== null && item.length_ft !== '') {
       const l = Number(item.length_ft);
       if (!Number.isFinite(l) || l <= 0 || l > MAX_LINEAR_FEET) {
-        throw new Error('Length (ft) must be a positive number.');
+        throw new ValidationError('Length (ft) must be a positive number.');
       }
       lengthFt = l;
     }

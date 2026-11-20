@@ -7,7 +7,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type {
   IssuedQuoteDetail,
   MetalColor,
@@ -47,8 +47,8 @@ export function CustomerQuoteView({
   const availableProducts = products.filter((p) => p.is_available === 1);
   const availableColors = colors.filter((c) => c.is_available === 1);
 
-  const productById = new Map(products.map((p) => [p.id, p]));
-  const colorById = new Map(colors.map((c) => [c.id, c]));
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const colorById = useMemo(() => new Map(colors.map((c) => [c.id, c])), [colors]);
 
   const addProductRow = () => {
     setValidationError(null);
@@ -86,8 +86,8 @@ export function CustomerQuoteView({
     });
   };
 
-  // Compute live line metrics
-  const computedRows = draft.items.map((item) => {
+  // Compute live line metrics (memoized — only recompute when draft or catalogs change)
+  const computedRows = useMemo(() => draft.items.map((item) => {
     const product = item.product_id ? productById.get(item.product_id) ?? null : null;
     const color = item.color_id ? colorById.get(item.color_id) ?? null : null;
 
@@ -145,7 +145,7 @@ export function CustomerQuoteView({
       validAddCostsCents,
       lineTotalCents,
     };
-  });
+  }), [draft.items, productById, colorById]);
 
   const grandTotalCents = computedRows.reduce((acc, r) => acc + r.lineTotalCents, 0);
   const totalLinearFeet = computedRows.reduce((acc, r) => acc + r.validLf, 0);
@@ -206,21 +206,25 @@ export function CustomerQuoteView({
         );
         return null;
       }
-      const widthNum = Number(r.item.width_input.trim());
-      const lengthNum = Number(r.item.length_input.trim());
+      const widthRaw = r.item.width_input.trim();
+      const lengthRaw = r.item.length_input.trim();
+      const widthNum = Number(widthRaw);
+      const lengthNum = Number(lengthRaw);
+      if (widthRaw !== '' && (!Number.isFinite(widthNum) || widthNum <= 0)) {
+        setValidationError(`Line #${i + 1}: Width (in) must be a positive number.`);
+        return null;
+      }
+      if (lengthRaw !== '' && (!Number.isFinite(lengthNum) || lengthNum <= 0)) {
+        setValidationError(`Line #${i + 1}: Length (ft) must be a positive number.`);
+        return null;
+      }
       payloadItems.push({
         product_id: r.item.product_id,
         material_type: r.item.material_type.trim() || null,
         color_id: r.item.color_id,
-        width_in:
-          r.item.width_input.trim() !== '' && Number.isFinite(widthNum) && widthNum > 0
-            ? widthNum
-            : null,
+        width_in: widthRaw !== '' ? widthNum : null,
         gauge: r.item.gauge_input.trim() || null,
-        length_ft:
-          r.item.length_input.trim() !== '' && Number.isFinite(lengthNum) && lengthNum > 0
-            ? lengthNum
-            : null,
+        length_ft: lengthRaw !== '' ? lengthNum : null,
         linear_feet: r.validLf,
         additional_costs_cents: r.validAddCostsCents,
         additional_costs_description: r.item.additional_costs_description.trim() || null,

@@ -41,11 +41,18 @@ export function IssuedQuotesView({
   const [quotes, setQuotes] = useState<IssuedQuote[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('quote_number');
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC');
+
+  // Debounce the search box so we don't fire a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const [deleteTarget, setDeleteTarget] = useState<IssuedQuote | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -135,8 +142,8 @@ export function IssuedQuotesView({
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="e.g. 2026-0001 or John..."
                   className="w-full rounded-md border border-slate-300 py-1.5 pl-8 pr-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
                 />
@@ -171,6 +178,7 @@ export function IssuedQuotesView({
               <button
                 type="button"
                 onClick={() => {
+                  setSearchInput('');
                   setSearch('');
                   setDateFrom('');
                   setDateTo('');

@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   Ban,
   CheckCircle2,
   Eye,
@@ -12,7 +11,13 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { AuthUser, UserPermissions, UserRole } from '../types';
+import {
+  DEFAULT_USER_PERMISSIONS,
+  EMPTY_USER_PERMISSIONS,
+  type UserPermissions,
+  type UserRole,
+} from '../../shared/permissions.ts';
+import type { AuthUser } from '../types';
 import { apiFetch } from '../utils/api';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -21,32 +26,6 @@ interface AdminViewProps {
   onCurrentUserUpdated: (user: AuthUser) => void;
   onNotify: (type: 'success' | 'error', text: string) => void;
 }
-
-const DEFAULT_NEW_USER_PERMISSIONS: UserPermissions = {
-  customer_quote: true,
-  issued_quotes_view: true,
-  issued_quotes_manage: true,
-  products_view: true,
-  products_manage: true,
-  colors_view: true,
-  colors_manage: true,
-  catalog_reorder: false,
-  exports: true,
-  backup_settings: true,
-};
-
-const EMPTY_USER_PERMISSIONS: UserPermissions = {
-  customer_quote: false,
-  issued_quotes_view: false,
-  issued_quotes_manage: false,
-  products_view: false,
-  products_manage: false,
-  colors_view: false,
-  colors_manage: false,
-  catalog_reorder: false,
-  exports: false,
-  backup_settings: false,
-};
 
 const PERMISSION_GROUPS: Array<{
   title: string;
@@ -158,7 +137,7 @@ export function AdminView({
   const [formRole, setFormRole] = useState<UserRole>('user');
   const [formActive, setFormActive] = useState(true);
   const [formPermissions, setFormPermissions] = useState<UserPermissions>({
-    ...DEFAULT_NEW_USER_PERMISSIONS,
+    ...DEFAULT_USER_PERMISSIONS,
   });
   const [showFormPassword, setShowFormPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -249,7 +228,7 @@ export function AdminView({
     setFormPassword('');
     setFormRole('user');
     setFormActive(true);
-    setFormPermissions({ ...DEFAULT_NEW_USER_PERMISSIONS });
+    setFormPermissions({ ...DEFAULT_USER_PERMISSIONS });
     setShowFormPassword(false);
     setFormError(null);
     setModalOpen(true);
@@ -388,18 +367,6 @@ export function AdminView({
 
   return (
     <div className="space-y-6">
-      {/* Default admin password recommendation banner */}
-      {currentUser.must_change_password && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-5 py-3.5 text-xs text-amber-900">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <div>
-            <span className="font-semibold">Security recommendation:</span> You are signed in with
-            the default <span className="font-mono font-semibold">admin</span> password. Update your
-            administrator username and set a strong password in Account Security below.
-          </div>
-        </div>
-      )}
-
       {/* Own Administrator Account Security */}
       <div className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5">
@@ -794,7 +761,7 @@ export function AdminView({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setFormPermissions({ ...DEFAULT_NEW_USER_PERMISSIONS })}
+                        onClick={() => setFormPermissions({ ...DEFAULT_USER_PERMISSIONS })}
                         className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
                       >
                         Enable All

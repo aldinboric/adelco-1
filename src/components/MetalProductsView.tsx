@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useReorderableList } from '../hooks/useReorderableList';
 import type { MetalProduct } from '../types';
 import { apiFetch, downloadProtectedFile } from '../utils/api';
 import {
@@ -56,45 +57,15 @@ export function MetalProductsView({
   const [deleting, setDeleting] = useState(false);
 
   // Locally reordered list (optimistic drag & drop, synced from server props)
-  const [orderedProducts, setOrderedProducts] = useState<MetalProduct[]>(products);
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [overId, setOverId] = useState<number | null>(null);
-  const [savingOrder, setSavingOrder] = useState(false);
-
-  useEffect(() => {
-    setOrderedProducts(products);
-  }, [products]);
-
-  const handleDrop = async (targetId: number) => {
-    if (!canReorder || dragId === null || dragId === targetId || savingOrder) return;
-    const fromIdx = orderedProducts.findIndex((p) => p.id === dragId);
-    const toIdx = orderedProducts.findIndex((p) => p.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-
-    const next = [...orderedProducts];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    setOrderedProducts(next);
-    setSavingOrder(true);
-    try {
-      const res = await apiFetch('/api/products/reorder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: next.map((p) => p.id) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save order.');
-      await onRefresh();
-      onNotify('success', 'Product order saved.');
-    } catch (err) {
-      setOrderedProducts(products);
-      onNotify('error', err instanceof Error ? err.message : 'Reorder failed.');
-    } finally {
-      setDragId(null);
-      setOverId(null);
-      setSavingOrder(false);
-    }
-  };
+  const {
+    ordered: orderedProducts,
+    dragId,
+    setDragId,
+    overId,
+    setOverId,
+    savingOrder,
+    handleDrop,
+  } = useReorderableList(products, '/api/products/reorder', 'Product', canReorder, onRefresh, onNotify);
 
   const isModalOpen = addModalOpen || editingProduct !== null;
 
@@ -133,7 +104,9 @@ export function MetalProductsView({
   const closeModal = () => {
     setAddModalOpen(false);
     setEditingProduct(null);
+    setNameInput('');
     setMaterialInput('');
+    setPriceInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
     setRemoveImage(false);

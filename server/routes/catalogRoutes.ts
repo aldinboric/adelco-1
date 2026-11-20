@@ -28,6 +28,10 @@ import {
 
 const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+// Whitelist of allowed upload types. The declared mimetype is client-controlled,
+// so the actual magic bytes are verified again in hasValidImageMagic().
+const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
 const uploadProductImage = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -35,13 +39,26 @@ const uploadProductImage = multer({
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype && file.mimetype.startsWith('image/')) {
+    if (ALLOWED_IMAGE_MIMES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed.'));
+      cb(new Error('Only PNG, JPEG, WebP or GIF images are allowed.'));
     }
   },
 });
+
+// Verifies actual file content (magic bytes), not just the client-supplied mimetype.
+function hasValidImageMagic(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  const isPng = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const head6 = buffer.subarray(0, 6).toString('latin1');
+  const isGif = head6 === 'GIF89a' || head6 === 'GIF87a';
+  const isWebp =
+    buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('latin1') === 'WEBP';
+  return isPng || isJpeg || isGif || isWebp;
+}
 
 async function processProductImage(buffer: Buffer): Promise<string> {
   ensureDataDirs();
@@ -308,6 +325,10 @@ export function createCatalogRouter(): Router {
           res.status(400).json({ error: 'Valid non-negative price per linear ft is required.' });
           return;
         }
+        if (req.file && !hasValidImageMagic(req.file.buffer)) {
+          res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
+          return;
+        }
 
         let imagePath: string | null = null;
         if (req.file) {
@@ -326,7 +347,9 @@ export function createCatalogRouter(): Router {
           .run(name, imagePath, materialType || null, priceCents, maxSort.m + 1, now);
         res.status(201).json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(info.lastInsertRowid));
       } catch (err) {
-        res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to create product.' });
+        // Log the real error server-side; never leak internal details (paths, stack) to the client.
+        console.error('Failed to create product:', err);
+        res.status(400).json({ error: 'Failed to create product. Please check the uploaded image and try again.' });
       }
     }
   );
@@ -357,6 +380,10 @@ export function createCatalogRouter(): Router {
           res.status(400).json({ error: 'Valid price per linear ft is required.' });
           return;
         }
+        if (req.file && !hasValidImageMagic(req.file.buffer)) {
+          res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
+          return;
+        }
 
         const db = getDb();
         const existing = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id) as
@@ -384,7 +411,8 @@ export function createCatalogRouter(): Router {
 
         res.json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id));
       } catch (err) {
-        res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update product.' });
+        console.error('Failed to update product:', err);
+        res.status(400).json({ error: 'Failed to update product. Please check the uploaded image and try again.' });
       }
     }
   );

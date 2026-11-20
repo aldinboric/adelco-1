@@ -1,23 +1,23 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
+import {
+  ALL_PERMISSIONS,
+  DEFAULT_USER_PERMISSIONS,
+  sanitizePermissions,
+  type PermissionKey,
+  type UserPermissions,
+  type UserRole,
+} from '../shared/permissions.ts';
 import { getDb, type UserRow } from './db.ts';
 
-export type UserRole = 'admin' | 'user';
-
-export interface UserPermissions {
-  customer_quote: boolean;
-  issued_quotes_view: boolean;
-  issued_quotes_manage: boolean;
-  products_view: boolean;
-  products_manage: boolean;
-  colors_view: boolean;
-  colors_manage: boolean;
-  catalog_reorder: boolean;
-  exports: boolean;
-  backup_settings: boolean;
-}
-
-export type PermissionKey = keyof UserPermissions;
+export {
+  ALL_PERMISSIONS,
+  DEFAULT_USER_PERMISSIONS,
+  sanitizePermissions,
+  type PermissionKey,
+  type UserPermissions,
+  type UserRole,
+} from '../shared/permissions.ts';
 
 export interface PublicAuthUser {
   id: number;
@@ -31,25 +31,6 @@ export interface PublicAuthUser {
   updated_at: string;
   last_login_at: string | null;
 }
-
-export const ALL_PERMISSIONS: UserPermissions = {
-  customer_quote: true,
-  issued_quotes_view: true,
-  issued_quotes_manage: true,
-  products_view: true,
-  products_manage: true,
-  colors_view: true,
-  colors_manage: true,
-  catalog_reorder: true,
-  exports: true,
-  backup_settings: true,
-};
-
-// Regular users do NOT get catalog_reorder by default — only admin can grant it.
-export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
-  ...ALL_PERMISSIONS,
-  catalog_reorder: false,
-};
 
 export const SESSION_COOKIE_NAME = 'adelco_session';
 export const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
@@ -75,6 +56,16 @@ export function normalizeUsername(raw: unknown): string | null {
   return cleaned;
 }
 
+// Common / breached passwords that must never be used as account passwords.
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'passw0rd', 'p@ssw0rd', '12345678', '123456789', '1234567890',
+  'qwerty', 'qwerty123', 'abc123', '111111', '000000', '123123', '654321', 'letmein',
+  'welcome', 'admin', 'administrator', 'login', 'master', 'hello', 'monkey', 'dragon',
+  'football', 'baseball', 'iloveyou', 'sunshine', 'princess', 'shadow', 'superman',
+  'michael', 'ninja', 'mustang', 'starwars', 'trustno1', 'freedom', 'whatever', 'zaq12wsx',
+  '1q2w3e4r', 'q1w2e3r4', 'changeme', 'default', 'secret', 'adelco', 'adelco123',
+]);
+
 export function validatePasswordStrength(raw: unknown): { ok: true; password: string } | { ok: false; error: string } {
   if (typeof raw !== 'string') {
     return { ok: false, error: 'Password is required.' };
@@ -88,50 +79,51 @@ export function validatePasswordStrength(raw: unknown): { ok: true; password: st
   if (raw.trim().length === 0) {
     return { ok: false, error: 'Password cannot be whitespace only.' };
   }
+  if (COMMON_PASSWORDS.has(raw.toLowerCase())) {
+    return { ok: false, error: 'This password is too common. Please choose a stronger, unique password.' };
+  }
   return { ok: true, password: raw };
 }
 
+// Hash format: "s2:N:r:p:salt:hex" (parameters stored so they can be raised over time).
+// Legacy hashes ("salt:hex", scrypt N=16384) remain verifiable for backward compatibility.
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
-  const derived = crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
-  return `${salt}:${derived.toString('hex')}`;
+  const N = 32768;
+  const r = 8;
+  const p = 1;
+  const derived = crypto.scryptSync(password, salt, 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
+  return `s2:${N}:${r}:${p}:${salt}:${derived.toString('hex')}`;
 }
 
 export function verifyPassword(password: string, storedHash: string): boolean {
-  if (!password || !storedHash || !storedHash.includes(':')) return false;
-  const [salt, hexDigest] = storedHash.split(':');
-  if (!salt || !hexDigest) return false;
+  if (!password || !storedHash) return false;
+  const parts = storedHash.split(':');
+  let N = 16384;
+  let r = 8;
+  let p = 1;
+  let salt: string | undefined;
+  let hexDigest: string | undefined;
+  if (parts[0] === 's2' && parts.length === 6) {
+    N = Number(parts[1]);
+    r = Number(parts[2]);
+    p = Number(parts[3]);
+    salt = parts[4];
+    hexDigest = parts[5];
+  } else {
+    [salt, hexDigest] = parts;
+  }
+  if (!salt || !hexDigest || !Number.isFinite(N) || N <= 0 || !Number.isFinite(r) || !Number.isFinite(p)) {
+    return false;
+  }
   try {
     const expected = Buffer.from(hexDigest, 'hex');
-    const actual = crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
+    const actual = crypto.scryptSync(password, salt, 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
     if (expected.length !== actual.length) return false;
     return crypto.timingSafeEqual(expected, actual);
   } catch {
     return false;
   }
-}
-
-export function sanitizePermissions(input: unknown, fallback: UserPermissions = DEFAULT_USER_PERMISSIONS): UserPermissions {
-  const src = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  const result: UserPermissions = {
-    customer_quote: typeof src.customer_quote === 'boolean' ? src.customer_quote : fallback.customer_quote,
-    issued_quotes_view: typeof src.issued_quotes_view === 'boolean' ? src.issued_quotes_view : fallback.issued_quotes_view,
-    issued_quotes_manage: typeof src.issued_quotes_manage === 'boolean' ? src.issued_quotes_manage : fallback.issued_quotes_manage,
-    products_view: typeof src.products_view === 'boolean' ? src.products_view : fallback.products_view,
-    products_manage: typeof src.products_manage === 'boolean' ? src.products_manage : fallback.products_manage,
-    colors_view: typeof src.colors_view === 'boolean' ? src.colors_view : fallback.colors_view,
-    colors_manage: typeof src.colors_manage === 'boolean' ? src.colors_manage : fallback.colors_manage,
-    catalog_reorder: typeof src.catalog_reorder === 'boolean' ? src.catalog_reorder : fallback.catalog_reorder,
-    exports: typeof src.exports === 'boolean' ? src.exports : fallback.exports,
-    backup_settings: typeof src.backup_settings === 'boolean' ? src.backup_settings : fallback.backup_settings,
-  };
-
-  // Enforce coherent dependency: manage implies view
-  if (result.issued_quotes_manage) result.issued_quotes_view = true;
-  if (result.products_manage) result.products_view = true;
-  if (result.colors_manage) result.colors_view = true;
-
-  return result;
 }
 
 export function parseUserPermissions(json: string, role: UserRole): UserPermissions {
@@ -316,7 +308,7 @@ export function getAuthenticatedUserFromRequest(req: Request): { user: PublicAut
        JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ?`
     )
-    .get(tokenHash) as (UserRow & { session_expires_at: string; session_id: number }) | undefined;
+    .get(tokenHash) as (UserRow & { session_expires_at: string; session_id: number; last_seen_at: string }) | undefined;
 
   if (!row) return null;
 
@@ -326,7 +318,10 @@ export function getAuthenticatedUserFromRequest(req: Request): { user: PublicAut
   }
 
   // Update last_seen_at throttled (at most once per minute)
-  db.prepare('UPDATE user_sessions SET last_seen_at = ? WHERE id = ?').run(nowIso, row.session_id);
+  const lastSeenMs = Date.parse(row.last_seen_at);
+  if (!Number.isFinite(lastSeenMs) || Date.now() - lastSeenMs > 60_000) {
+    db.prepare('UPDATE user_sessions SET last_seen_at = ? WHERE id = ?').run(nowIso, row.session_id);
+  }
 
   return {
     user: toPublicAuthUser(row),
@@ -334,12 +329,40 @@ export function getAuthenticatedUserFromRequest(req: Request): { user: PublicAut
   };
 }
 
+// NOTE: with `trust proxy` configured, req.ip already resolves the correct client IP
+// from X-Forwarded-For. Reading the raw header's first entry would let clients spoof
+// their IP and bypass the login rate limit.
 export function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
-  }
   return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+// Global sliding-window rate limit for all non-GET /api requests (per client IP).
+const API_MUTATION_WINDOW_MS = 60 * 1000;
+const MAX_API_MUTATIONS_PER_IP = 120;
+const apiMutationLog = new Map<string, number[]>();
+
+export function rateLimitApiMutations(req: Request, res: Response, next: NextFunction): void {
+  const method = req.method.toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    next();
+    return;
+  }
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const nowMs = Date.now();
+  const rec = apiMutationLog.get(ip) ?? [];
+  const recent = rec.filter((t) => nowMs - t < API_MUTATION_WINDOW_MS);
+  if (recent.length >= MAX_API_MUTATIONS_PER_IP) {
+    const retryAfterSec = Math.max(1, Math.ceil((recent[0] + API_MUTATION_WINDOW_MS - nowMs) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSec));
+    res.status(429).json({ error: 'Too many requests. Please slow down and try again.' });
+    return;
+  }
+  recent.push(nowMs);
+  apiMutationLog.set(ip, recent);
+  if (apiMutationLog.size > 5000) {
+    apiMutationLog.clear();
+  }
+  next();
 }
 
 function pruneAttempts(record: AttemptRecord, nowMs: number): number[] {
@@ -453,11 +476,29 @@ export function verifySameOriginForMutations(req: Request, res: Response, next: 
   next();
 }
 
+// While must_change_password is set (e.g. the seeded default admin account), only these
+// routes are reachable — everything else is blocked until the user sets a new password.
+const PASSWORD_CHANGE_ALLOWED_ROUTES = new Set([
+  'GET /auth/me',
+  'PUT /auth/profile',
+  'POST /auth/logout',
+]);
+
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const auth = getAuthenticatedUserFromRequest(req);
   if (!auth) {
     clearSessionCookie(req, res);
     res.status(401).json({ error: 'Authentication required. Please sign in.' });
+    return;
+  }
+  if (
+    auth.user.must_change_password &&
+    !PASSWORD_CHANGE_ALLOWED_ROUTES.has(`${req.method.toUpperCase()} ${req.path}`)
+  ) {
+    res.status(403).json({
+      error: 'You must set a new password before continuing.',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+    });
     return;
   }
   req.authUser = auth.user;

@@ -23,7 +23,15 @@ import {
   parsePositiveInt,
   sendBufferDownload,
   validateAndBuildQuoteLines,
+  ValidationError,
 } from '../validation.ts';
+
+// Returns a user-safe message for validation errors; logs and hides anything unexpected.
+function errorMessageOrLog(err: unknown, fallback: string, logContext: string): string {
+  if (err instanceof ValidationError) return err.message;
+  console.error(logContext, err);
+  return fallback;
+}
 
 const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -49,8 +57,10 @@ function queryIssuedQuotes(query: Request['query']): IssuedQuoteRow[] {
   const params: unknown[] = [];
 
   if (search) {
-    where.push("(quote_number LIKE ? OR COALESCE(customer_name, '') LIKE ?)");
-    params.push(`%${search}%`, `%${search}%`);
+    // Escape LIKE wildcards so user input cannot act as wildcards
+    const escaped = search.replace(/[\\%_]/g, (m) => `\\${m}`);
+    where.push("(quote_number LIKE ? ESCAPE '\\' OR COALESCE(customer_name, '') LIKE ? ESCAPE '\\')");
+    params.push(`%${escaped}%`, `%${escaped}%`);
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
     where.push('quote_date >= ?');
@@ -95,7 +105,7 @@ export function createQuoteRouter(): Router {
         const buf = await buildSingleQuoteExcel(payload);
         sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Draft-Quote.xlsx', buf);
       } catch (err) {
-        res.status(400).json({ error: err instanceof Error ? err.message : 'Export failed.' });
+        res.status(400).json({ error: errorMessageOrLog(err, 'Export failed.', 'Draft quote Excel export failed:') });
       }
     }
   );
@@ -110,7 +120,7 @@ export function createQuoteRouter(): Router {
         const buf = await buildSingleQuotePdf(payload);
         sendBufferDownload(res, 'application/pdf', 'AdelCo-Draft-Quote.pdf', buf);
       } catch (err) {
-        res.status(400).json({ error: err instanceof Error ? err.message : 'Export failed.' });
+        res.status(400).json({ error: errorMessageOrLog(err, 'Export failed.', 'Draft quote PDF export failed:') });
       }
     }
   );
@@ -230,7 +240,7 @@ export function createQuoteRouter(): Router {
 
         res.status(201).json(result);
       } catch (err) {
-        res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to issue quote.' });
+        res.status(400).json({ error: errorMessageOrLog(err, 'Failed to issue quote.', 'Failed to issue quote:') });
       }
     }
   );

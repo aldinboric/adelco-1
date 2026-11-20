@@ -166,17 +166,30 @@ export function createBackupRouter(): Router {
 
         // Validate SQLite integrity and required tables before replacing live DB
         const testDb = new Database(restoredDbPath, { readonly: true });
+        const integrity = testDb.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+        if (integrity.integrity_check !== 'ok') {
+          testDb.close();
+          throw new Error('Invalid backup database: integrity check failed.');
+        }
         const tables = testDb
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
           .all() as Array<{ name: string }>;
         testDb.close();
 
         const tableNames = new Set(tables.map((t) => t.name));
-        const required = ['metal_colors', 'metal_products', 'issued_quotes', 'issued_quote_items'];
+        const required = [
+          'metal_colors',
+          'metal_products',
+          'issued_quotes',
+          'issued_quote_items',
+          'quote_sequences',
+          'app_settings',
+          'users',
+          'user_sessions',
+        ];
         for (const reqTable of required) {
           if (!tableNames.has(reqTable)) {
-            res.status(400).json({ error: `Invalid backup database: missing table ${reqTable}.` });
-            return;
+            throw new Error(`Invalid backup database: missing table ${reqTable}.`);
           }
         }
 

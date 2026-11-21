@@ -1325,7 +1325,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     {
       label: 'Notes',
       align: 'left',
-      minW: 50,
+      minW: 40,
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,
@@ -1530,15 +1530,17 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       });
     }
 
-    // Col 6: Notes — justified, occupying 90% of the column width
-    // (padded 5% from each edge); empty note prints as an empty cell.
+    // Col 6: Notes — justified and vertically centered; uniform 4pt padding on
+    // all four sides (top/bottom gap equals left/right gap); ellipsis keeps the
+    // text inside the cell bounds; empty note prints as an empty cell.
     const noteText = item.note?.trim() ?? '';
     if (noteText) {
       doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
-      doc.text(noteText, cols[6].x + cols[6].w * 0.05, y + 4, {
-        width: cols[6].w * 0.9,
+      drawPdfCenteredText(doc, noteText, cols[6].x + 4, y, rowH, {
+        width: cols[6].w - 8,
         height: rowH - 8,
         align: 'justify',
+        ellipsis: true,
       });
     }
 
@@ -1563,8 +1565,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   }
 
   const footerH = 30;
-  doc.rect(40, y, cols[5].x - 40, footerH).fill(NEUTRAL_BG);
-  doc.rect(cols[5].x, y, doc.page.width - 40 - cols[5].x, footerH).fill(BRAND_GREEN);
+  doc.rect(40, y, cols[6].x - 40, footerH).fill(NEUTRAL_BG);
+  doc.rect(cols[6].x, y, doc.page.width - 40 - cols[6].x, footerH).fill(BRAND_GREEN);
 
   doc
     .moveTo(40, y)
@@ -1604,12 +1606,12 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     50,
     y,
     footerH,
-    { width: cols[5].x - 60, height: footerH - 6, ellipsis: true }
+    { width: cols[6].x - 60, height: footerH - 6, ellipsis: true }
   );
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[5].x + 4, y, footerH, {
-    width: cols[5].w + cols[6].w - 8,
+  drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[6].x + 4, y, footerH, {
+    width: cols[6].w - 8,
     align: 'right',
   });
 

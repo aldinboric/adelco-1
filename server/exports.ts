@@ -1471,9 +1471,11 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   doc.rect(40, y, cols[5].x - 40, footerH).fill(NEUTRAL_BG);
   doc.rect(cols[5].x, y, doc.page.width - 40 - cols[5].x, footerH).fill(BRAND_GREEN);
 
+  // Extend by half the side-border width (0.25) so the blue line sits flush
+  // with the outer edge of the 0.5-wide side borders instead of starting inset.
   doc
-    .moveTo(40, y)
-    .lineTo(doc.page.width - 40, y)
+    .moveTo(40 - 0.25, y)
+    .lineTo(doc.page.width - 40 + 0.25, y)
     .lineWidth(1.2)
     .strokeColor(BRAND_BLUE)
     .stroke();

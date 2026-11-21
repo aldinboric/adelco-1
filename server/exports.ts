@@ -1294,44 +1294,31 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     'WorkSafeBC: 201 255 418'
   );
 
-  // Customer & Quote metadata card — taller box: top row holds quote number,
-  // date, customer and seller (with clear gaps between columns); below them two
-  // thin signature lines, one for the customer and one for the seller.
-  const metaBoxH = 74;
-  doc.rect(40, y, doc.page.width - 80, metaBoxH).fillAndStroke(NEUTRAL_BG, '#E2E8F0');
+  // Customer & Quote metadata card — four columns: quote number, date,
+  // customer and seller, with a clear gap between the customer and seller
+  // columns so the values never overlap (each ellipsized within its own width).
+  doc.rect(40, y, doc.page.width - 80, 50).fillAndStroke(NEUTRAL_BG, '#E2E8F0');
   doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_MUTED);
-  doc.text('QUOTE NUMBER', 54, y + 9);
-  doc.text('DATE', 192, y + 9);
-  doc.text('CUSTOMER', 290, y + 9);
-  doc.text('SELLER', 428, y + 9);
+  doc.text('QUOTE NUMBER', 54, y + 10);
+  doc.text('DATE', 192, y + 10);
+  doc.text('CUSTOMER', 290, y + 10);
+  doc.text('SELLER', 428, y + 10);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_BLUE);
-  doc.text(quote.quote_number, 54, y + 23, { width: 128 });
+  doc.text(quote.quote_number, 54, y + 25, { width: 128 });
   doc.font('Helvetica').fontSize(10.5).fillColor(TEXT_DARK);
-  doc.text(quote.quote_date, 192, y + 23, { width: 88 });
+  doc.text(quote.quote_date, 192, y + 25, { width: 88 });
   doc.font('Helvetica-Bold').fontSize(10.5).fillColor(TEXT_DARK);
-  doc.text(quote.customer_name?.trim() || '//', 290, y + 23, {
+  doc.text(quote.customer_name?.trim() || '//', 290, y + 25, {
     width: 128,
     ellipsis: true,
   });
-  doc.text(quote.seller_name?.trim() || '//', 428, y + 23, {
+  doc.text(quote.seller_name?.trim() || '//', 428, y + 25, {
     width: 130,
     ellipsis: true,
   });
 
-  // Signature lines below the customer/seller row — two thin lines of equal,
-  // adequate width, each with a small caption underneath.
-  const sigLineY = y + 54;
-  doc.save();
-  doc.lineWidth(0.7).strokeColor('#64748B');
-  doc.moveTo(54, sigLineY).lineTo(294, sigLineY).stroke();
-  doc.moveTo(318, sigLineY).lineTo(558, sigLineY).stroke();
-  doc.restore();
-  doc.font('Helvetica').fontSize(6.8).fillColor(TEXT_MUTED);
-  doc.text('Customer signature', 54, sigLineY + 5, { width: 240 });
-  doc.text('Seller signature', 318, sigLineY + 5, { width: 240 });
-
-  y += metaBoxH + 14;
+  y += 64;
 
   const cols = fitPdfColumns(doc, doc.page.width - 80, [
     {

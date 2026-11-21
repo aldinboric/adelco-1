@@ -77,6 +77,20 @@ export interface QuoteDraftState {
   copiedFromQuoteNumber?: string | null;
 }
 
+/** Payload item sent to POST /api/quotes and the draft export endpoints. */
+export interface QuotePayloadItem {
+  product_id: number;
+  material_type: string | null;
+  color_id: number;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+  linear_feet: number;
+  additional_costs_cents: number;
+  additional_costs_description: string | null;
+  note: string | null;
+}
+
 export interface IssuedQuote {
   id: number;
   quote_number: string;

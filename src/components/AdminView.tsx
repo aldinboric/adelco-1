@@ -20,6 +20,7 @@ import {
 import type { AuthUser } from '../types';
 import { apiFetch } from '../utils/api';
 import { ConfirmModal } from './ConfirmModal';
+import { TableSkeleton } from './TableSkeleton';
 
 interface AdminViewProps {
   currentUser: AuthUser;
@@ -507,16 +508,7 @@ export function AdminView({
       {/* Users Table */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {loading ? (
-          <div className="divide-y divide-slate-100 p-4">
-            {[1, 2, 3].map((n) => (
-              <div key={n} className="flex h-11 items-center gap-4 py-2">
-                <div className="h-4 w-8 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-44 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                <div className="ml-auto h-4 w-28 animate-pulse rounded bg-slate-200" />
-              </div>
-            ))}
-          </div>
+          <TableSkeleton rows={3} rowHeightClass="h-11" cells={['h-4 w-8', 'h-4 w-44', 'h-4 w-24']} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-left text-sm">

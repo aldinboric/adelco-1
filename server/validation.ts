@@ -11,6 +11,8 @@ export const MAX_PRICE_CENTS = 100_000_000; // $1,000,000.00 max
 export const MAX_LINEAR_FEET = 1_000_000;
 export const MAX_QUOTE_ITEMS = 200;
 
+export const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 export function paramAsString(raw: string | string[] | undefined): string {
   if (Array.isArray(raw)) return raw[0] ?? '';
   return raw ?? '';

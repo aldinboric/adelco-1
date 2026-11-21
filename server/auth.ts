@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import {
   ALL_PERMISSIONS,
   DEFAULT_USER_PERMISSIONS,
+  roleHasPermission,
   sanitizePermissions,
   type PermissionKey,
   type UserPermissions,
@@ -13,6 +14,7 @@ import { getDb, type UserRow } from './db.ts';
 export {
   ALL_PERMISSIONS,
   DEFAULT_USER_PERMISSIONS,
+  roleHasPermission,
   sanitizePermissions,
   type PermissionKey,
   type UserPermissions,
@@ -87,17 +89,52 @@ export function validatePasswordStrength(raw: unknown): { ok: true; password: st
 
 // Hash format: "s2:N:r:p:salt:hex" (parameters stored so they can be raised over time).
 // Legacy hashes ("salt:hex", scrypt N=16384) remain verifiable for backward compatibility.
-export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const N = 32768;
-  const r = 8;
-  const p = 1;
-  const derived = crypto.scryptSync(password, salt, 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
-  return `s2:${N}:${r}:${p}:${salt}:${derived.toString('hex')}`;
+const SCRYPT_N = 32768;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_MAXMEM = 64 * 1024 * 1024;
+
+function scryptAsync(
+  password: string,
+  salt: string,
+  N: number,
+  r: number,
+  p: number
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, { N, r, p, maxmem: SCRYPT_MAXMEM }, (err, derived) => {
+      if (err) reject(err);
+      else resolve(derived);
+    });
+  });
 }
 
-export function verifyPassword(password: string, storedHash: string): boolean {
-  if (!password || !storedHash) return false;
+/** Synchronous variant — only for one-off startup seeding (never on request paths). */
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, salt, 64, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM,
+  });
+  return `s2:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${derived.toString('hex')}`;
+}
+
+/** Async variant for request handlers — does not block the event loop. */
+export async function hashPasswordAsync(password: string): Promise<string> {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = await scryptAsync(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P);
+  return `s2:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${derived.toString('hex')}`;
+}
+
+function parseStoredHash(storedHash: string): {
+  N: number;
+  r: number;
+  p: number;
+  salt: string;
+  hexDigest: string;
+} | null {
   const parts = storedHash.split(':');
   let N = 16384;
   let r = 8;
@@ -113,12 +150,46 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   } else {
     [salt, hexDigest] = parts;
   }
-  if (!salt || !hexDigest || !Number.isFinite(N) || N <= 0 || !Number.isFinite(r) || !Number.isFinite(p)) {
+  if (
+    !salt ||
+    !hexDigest ||
+    !Number.isFinite(N) ||
+    N <= 0 ||
+    !Number.isFinite(r) ||
+    r <= 0 ||
+    !Number.isFinite(p) ||
+    p <= 0
+  ) {
+    return null;
+  }
+  return { N, r, p, salt, hexDigest };
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const parsed = parseStoredHash(storedHash);
+  if (!password || !parsed) return false;
+  try {
+    const expected = Buffer.from(parsed.hexDigest, 'hex');
+    const actual = crypto.scryptSync(password, parsed.salt, 64, {
+      N: parsed.N,
+      r: parsed.r,
+      p: parsed.p,
+      maxmem: SCRYPT_MAXMEM,
+    });
+    if (expected.length !== actual.length) return false;
+    return crypto.timingSafeEqual(expected, actual);
+  } catch {
     return false;
   }
+}
+
+/** Async variant for request handlers — does not block the event loop. */
+export async function verifyPasswordAsync(password: string, storedHash: string): Promise<boolean> {
+  const parsed = parseStoredHash(storedHash);
+  if (!password || !parsed) return false;
   try {
-    const expected = Buffer.from(hexDigest, 'hex');
-    const actual = crypto.scryptSync(password, salt, 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
+    const expected = Buffer.from(parsed.hexDigest, 'hex');
+    const actual = await scryptAsync(password, parsed.salt, parsed.N, parsed.r, parsed.p);
     if (expected.length !== actual.length) return false;
     return crypto.timingSafeEqual(expected, actual);
   } catch {
@@ -156,8 +227,7 @@ export function toPublicAuthUser(row: UserRow): PublicAuthUser {
 
 export function userHasPermission(user: PublicAuthUser, key: PermissionKey): boolean {
   if (!user.is_active) return false;
-  if (user.role === 'admin') return true;
-  return Boolean(user.permissions[key]);
+  return roleHasPermission(user.role, user.permissions, key);
 }
 
 function hashSessionToken(rawToken: string): string {
@@ -310,9 +380,11 @@ export function getAuthenticatedUserFromRequest(req: Request): { user: PublicAut
   };
 }
 
-// NOTE: with `trust proxy` configured, req.ip already resolves the correct client IP
-// from X-Forwarded-For. Reading the raw header's first entry would let clients spoof
-// their IP and bypass the login rate limit.
+// NOTE: when the server runs behind a reverse proxy (TRUST_PROXY=1), `trust proxy` is
+// enabled and req.ip already resolves the correct client IP from X-Forwarded-For.
+// Reading the raw header's first entry instead would let clients spoof their IP and
+// bypass the login rate limit. When exposed directly (no proxy), req.ip is the real
+// socket peer because trust proxy stays disabled.
 export function getClientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
@@ -341,7 +413,16 @@ export function rateLimitApiMutations(req: Request, res: Response, next: NextFun
   recent.push(nowMs);
   apiMutationLog.set(ip, recent);
   if (apiMutationLog.size > 5000) {
-    apiMutationLog.clear();
+    // Prune stale entries instead of clearing the whole map (a full clear would
+    // briefly reset the limit for every tracked IP).
+    for (const [key, rec] of apiMutationLog.entries()) {
+      const fresh = rec.filter((t) => nowMs - t < API_MUTATION_WINDOW_MS);
+      if (fresh.length === 0) {
+        apiMutationLog.delete(key);
+      } else {
+        apiMutationLog.set(key, fresh);
+      }
+    }
   }
   next();
 }

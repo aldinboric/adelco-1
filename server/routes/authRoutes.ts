@@ -9,6 +9,7 @@ import {
   extractSessionTokenFromRequest,
   getClientIp,
   hashPassword,
+  hashPasswordAsync,
   normalizeUsername,
   recordFailedLogin,
   requireAdmin,
@@ -19,7 +20,7 @@ import {
   setSessionCookie,
   toPublicAuthUser,
   validatePasswordStrength,
-  verifyPassword,
+  verifyPasswordAsync,
 } from '../auth.ts';
 import { getDb, type UserRow } from '../db.ts';
 import { parsePositiveInt } from '../validation.ts';
@@ -28,7 +29,7 @@ export function createAuthRouter(): Router {
   const router = Router();
   const DUMMY_PASSWORD_HASH = hashPassword('adelco-dummy-timing-guard-2026');
 
-  router.post('/auth/login', (req: Request, res: Response) => {
+  router.post('/auth/login', async (req: Request, res: Response) => {
     const rawUsername =
       typeof req.body?.username === 'string' ? req.body.username.trim().toLowerCase() : '';
     const rawPassword = typeof req.body?.password === 'string' ? req.body.password : '';
@@ -54,13 +55,14 @@ export function createAuthRouter(): Router {
       | undefined;
 
     if (!userRow) {
-      verifyPassword(rawPassword, DUMMY_PASSWORD_HASH);
+      // Burn the same scrypt work so timing does not reveal whether the user exists.
+      await verifyPasswordAsync(rawPassword, DUMMY_PASSWORD_HASH);
       recordFailedLogin(clientIp, rawUsername);
       res.status(401).json({ error: 'Invalid username or password.' });
       return;
     }
 
-    if (!verifyPassword(rawPassword, userRow.password_hash)) {
+    if (!(await verifyPasswordAsync(rawPassword, userRow.password_hash))) {
       recordFailedLogin(clientIp, rawUsername);
       res.status(401).json({ error: 'Invalid username or password.' });
       return;
@@ -96,7 +98,7 @@ export function createAuthRouter(): Router {
     res.json({ user: req.authUser });
   });
 
-  router.put('/auth/profile', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  router.put('/auth/profile', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const currentUser = req.authUser!;
     const currentPassword = typeof req.body?.current_password === 'string' ? req.body.current_password : '';
     const displayNameRaw = typeof req.body?.display_name === 'string' ? req.body.display_name.trim() : '';
@@ -119,7 +121,7 @@ export function createAuthRouter(): Router {
 
     const db = getDb();
     const userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(currentUser.id) as UserRow | undefined;
-    if (!userRow || !verifyPassword(currentPassword, userRow.password_hash)) {
+    if (!userRow || !(await verifyPasswordAsync(currentPassword, userRow.password_hash))) {
       recordFailedLogin(clientIp, rateKey);
       res.status(401).json({ error: 'Current password is incorrect.' });
       return;
@@ -156,7 +158,7 @@ export function createAuthRouter(): Router {
         res.status(400).json({ error: check.error });
         return;
       }
-      nextPasswordHash = hashPassword(check.password);
+      nextPasswordHash = await hashPasswordAsync(check.password);
       nextMustChange = 0;
       passwordChanged = true;
     }
@@ -187,7 +189,7 @@ export function createAuthRouter(): Router {
     res.json(rows.map(toPublicAuthUser));
   });
 
-  router.post('/admin/users', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  router.post('/admin/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     const username = normalizeUsername(req.body?.username);
     if (!username) {
       res.status(400).json({
@@ -232,7 +234,7 @@ export function createAuthRouter(): Router {
       .run(
         username,
         displayName,
-        hashPassword(passCheck.password),
+        await hashPasswordAsync(passCheck.password),
         role,
         isActive,
         JSON.stringify(permissions),
@@ -244,7 +246,7 @@ export function createAuthRouter(): Router {
     res.status(201).json(toPublicAuthUser(created));
   });
 
-  router.put('/admin/users/:id', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  router.put('/admin/users/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     const id = parsePositiveInt(req.params.id);
     if (!id) {
       res.status(400).json({ error: 'Invalid user ID.' });
@@ -309,7 +311,7 @@ export function createAuthRouter(): Router {
         res.status(400).json({ error: passCheck.error });
         return;
       }
-      nextPasswordHash = hashPassword(passCheck.password);
+      nextPasswordHash = await hashPasswordAsync(passCheck.password);
       nextMustChange = 0;
       passwordReset = true;
     }

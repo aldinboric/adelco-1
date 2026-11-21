@@ -5,12 +5,18 @@ import {
   Row,
   Workbook,
   Worksheet,
+  type CellValueInput,
 } from 'documonster/excel';
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
-import { formatCAD } from '../shared/format.ts';
+import {
+  formatCAD,
+  formatGaugeLabel,
+  formatMaterialMeasures,
+  formatMeasureDimensions,
+} from '../shared/format.ts';
 import { hexToArgb, normalizeHexDisplay } from '../shared/hex.ts';
 import {
   type IssuedQuoteRow,
@@ -76,36 +82,6 @@ async function loadImageBuffer(relPath: string | null | undefined, size = 72): P
 function sanitizeExcelText(value: string): string {
   if (!value) return value;
   return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-}
-
-function formatGaugeLabel(gauge: string | null | undefined): string | null {
-  if (!gauge) return null;
-  const t = gauge.trim();
-  if (!t) return null;
-  return /^\d+(\.\d+)?$/.test(t) ? `${t} Ga` : t;
-}
-
-function formatMeasureDimensions(
-  widthIn: number | null | undefined,
-  lengthFt: number | null | undefined
-): string | null {
-  const fmt = (n: number) => n.toLocaleString('en-CA', { maximumFractionDigits: 2 });
-  const w = widthIn && widthIn > 0 ? `${fmt(widthIn)}"` : null;
-  const l = lengthFt && lengthFt > 0 ? `${fmt(lengthFt)}'` : null;
-  if (w && l) return `${w} x ${l}`;
-  return w || l;
-}
-
-/** Compact "36\" · 26 Ga · 10'" style label for a material's saved measures. */
-function formatMaterialMeasures(m: {
-  width_in: number | null;
-  gauge: string | null;
-  length_ft: number | null;
-}): string | null {
-  const parts = [formatGaugeLabel(m.gauge), formatMeasureDimensions(m.width_in, m.length_ft)].filter(
-    Boolean
-  );
-  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 /** Material names for a product (falls back to the legacy comma-separated column). */
@@ -252,6 +228,72 @@ function applyExcelHeaderBanner(
   }
 
   return 5; // table header row index
+}
+
+// ---------------------------------------------------------------------------
+// Shared Excel cell renderers — the four export builders all draw the same
+// blue header row and striped/bordered data rows.
+// ---------------------------------------------------------------------------
+
+type CellPos = { row: number; col: number };
+
+function excelHeaderCell(
+  ws: Worksheet.Handle,
+  pos: CellPos,
+  label: string,
+  align: 'left' | 'right' = 'left',
+  fontSize = 11
+): void {
+  Cell.setValue(ws, pos, label);
+  Cell.setStyle(ws, pos, {
+    font: { name: 'Calibri', size: fontSize, bold: true, color: { argb: 'FFFFFFFF' } },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
+    alignment: { vertical: 'middle', horizontal: align },
+    border: {
+      top: { style: 'thin', color: { argb: 'FF084091' } },
+      bottom: { style: 'thin', color: { argb: 'FF084091' } },
+      left: { style: 'thin', color: { argb: 'FF3563A8' } },
+      right: { style: 'thin', color: { argb: 'FF3563A8' } },
+    },
+  });
+}
+
+interface ExcelDataCellOpts {
+  align?: 'left' | 'right';
+  numFmt?: string;
+  bold?: boolean;
+  colorArgb?: string;
+  fillArgb?: string;
+  wrapText?: boolean;
+}
+
+function excelDataCell(
+  ws: Worksheet.Handle,
+  pos: CellPos,
+  value: CellValueInput,
+  opts: ExcelDataCellOpts = {}
+): void {
+  Cell.setValue(ws, pos, value);
+  Cell.setStyle(ws, pos, {
+    font: {
+      name: 'Calibri',
+      size: 10.5,
+      bold: opts.bold ?? false,
+      color: { argb: opts.colorArgb ?? 'FF0F172A' },
+    },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fillArgb ?? 'FFFFFFFF' } },
+    border: {
+      bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+    },
+    alignment: {
+      vertical: 'middle',
+      horizontal: opts.align ?? 'left',
+      ...(opts.wrapText ? { wrapText: true } : {}),
+    },
+    ...(opts.numFmt ? { numFmt: opts.numFmt } : {}),
+  });
 }
 
 function drawPdfColumnDividers(
@@ -510,19 +552,7 @@ export async function buildColorsExcel(colors: MetalColorRow[]): Promise<Buffer>
   const headers = ['ID', 'Color', 'Name', 'HEX', 'Price per linear ft', 'Status'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
-    const col = idx + 1;
-    Cell.setValue(ws, { row: headerRowIdx, col }, label);
-    Cell.setStyle(ws, { row: headerRowIdx, col }, {
-      font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 5 ? 'right' : 'left' },
-      border: {
-        top: { style: 'thin', color: { argb: 'FF084091' } },
-        bottom: { style: 'thin', color: { argb: 'FF084091' } },
-        left: { style: 'thin', color: { argb: 'FF3563A8' } },
-        right: { style: 'thin', color: { argb: 'FF3563A8' } },
-      },
-    });
+    excelHeaderCell(ws, { row: headerRowIdx, col: idx + 1 }, label, idx === 4 ? 'right' : 'left');
   });
 
   colors.forEach((c, idx) => {
@@ -540,25 +570,11 @@ export async function buildColorsExcel(colors: MetalColorRow[]): Promise<Buffer>
 
     values.forEach((val, vIdx) => {
       const col = vIdx + 1;
-      Cell.setValue(ws, { row: rowIdx, col }, val);
-      Cell.setStyle(ws, { row: rowIdx, col }, {
-        font: {
-          name: 'Calibri',
-          size: 10.5,
-          color: { argb: c.is_available ? 'FF0F172A' : 'FF64748B' },
-        },
-        fill: {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: col === 2 ? hexToArgb(c.hex_code) : rowBg },
-        },
-        border: {
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        },
-        alignment: { vertical: 'middle', horizontal: col === 5 ? 'right' : 'left' },
-        ...(col === 5 ? { numFmt: '$#,##0.00' } : {}),
+      excelDataCell(ws, { row: rowIdx, col }, val, {
+        align: col === 5 ? 'right' : 'left',
+        numFmt: col === 5 ? '$#,##0.00' : undefined,
+        colorArgb: c.is_available ? 'FF0F172A' : 'FF64748B',
+        fillArgb: col === 2 ? hexToArgb(c.hex_code) : rowBg,
       });
     });
   });
@@ -718,20 +734,12 @@ export async function buildProductsExcel(products: MetalProductWithMaterials[]):
   const headers = ['ID', 'Product', 'Name', 'Material Type', 'Measures', 'Price per linear ft', 'Status'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
-    const col = idx + 1;
-    Cell.setValue(ws, { row: headerRowIdx, col }, label);
-    Cell.setStyle(ws, { row: headerRowIdx, col }, {
-      font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 6 ? 'right' : 'left' },
-      border: {
-        top: { style: 'thin', color: { argb: 'FF084091' } },
-        bottom: { style: 'thin', color: { argb: 'FF084091' } },
-        left: { style: 'thin', color: { argb: 'FF3563A8' } },
-        right: { style: 'thin', color: { argb: 'FF3563A8' } },
-      },
-    });
+    excelHeaderCell(ws, { row: headerRowIdx, col: idx + 1 }, label, idx === 5 ? 'right' : 'left');
   });
+
+  // Pre-load all product thumbnails in parallel (sharp is async) instead of
+  // awaiting each one inside the row loop.
+  const imageBuffers = await Promise.all(products.map((p) => loadImageBuffer(p.image_path, 72)));
 
   for (let idx = 0; idx < products.length; idx++) {
     const p = products[idx];
@@ -752,29 +760,16 @@ export async function buildProductsExcel(products: MetalProductWithMaterials[]):
 
     values.forEach((val, vIdx) => {
       const col = vIdx + 1;
-      Cell.setValue(ws, { row: rowIdx, col }, val);
-      Cell.setStyle(ws, { row: rowIdx, col }, {
-        font: {
-          name: 'Calibri',
-          size: 10.5,
-          color: { argb: p.is_available ? 'FF0F172A' : 'FF64748B' },
-        },
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } },
-        border: {
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        },
-        alignment: {
-          vertical: 'middle',
-          horizontal: col === 6 ? 'right' : 'left',
-          wrapText: col === 3 || col === 4 || col === 5 || col === 6,
-        },
-        ...(col === 6 && !hasMaterials ? { numFmt: '$#,##0.00' } : {}),
+      excelDataCell(ws, { row: rowIdx, col }, val, {
+        align: col === 6 ? 'right' : 'left',
+        wrapText: col === 3 || col === 4 || col === 5 || col === 6,
+        numFmt: col === 6 && !hasMaterials ? '$#,##0.00' : undefined,
+        colorArgb: p.is_available ? 'FF0F172A' : 'FF64748B',
+        fillArgb: rowBg,
       });
     });
 
-    const imgBuf = await loadImageBuffer(p.image_path, 72);
+    const imgBuf = imageBuffers[idx];
     if (imgBuf) {
       const imgId = Image.add(wb, { buffer: imgBuf, extension: 'png' });
       Image.place(ws, imgId, {
@@ -854,6 +849,9 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
 
   y = drawHeader(y);
 
+  // Pre-load all thumbnails in parallel (sharp is async) before the row loop.
+  const productImageBuffers = await Promise.all(products.map((p) => loadImageBuffer(p.image_path, 72)));
+
   for (let i = 0; i < products.length; i++) {
     if (y > doc.page.height - 80) {
       doc.addPage();
@@ -868,7 +866,7 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
 
     const imgX = cols[1].x + 8;
     const imgY = y + (rowH - 32) / 2;
-    const imgBuf = await loadImageBuffer(item.image_path, 72);
+    const imgBuf = productImageBuffers[i];
     if (imgBuf) {
       doc.image(imgBuf, imgX, imgY, { width: 32, height: 32 });
     } else {
@@ -1107,22 +1105,11 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
     const col = idx + 1;
-    Cell.setValue(ws, { row: headerRowIdx, col }, label);
-    Cell.setStyle(ws, { row: headerRowIdx, col }, {
-      font: { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: {
-        vertical: 'middle',
-        horizontal: isRightAlignedCol(col) ? 'right' : 'left',
-      },
-      border: {
-        top: { style: 'thin', color: { argb: 'FF084091' } },
-        bottom: { style: 'thin', color: { argb: 'FF084091' } },
-        left: { style: 'thin', color: { argb: 'FF3563A8' } },
-        right: { style: 'thin', color: { argb: 'FF3563A8' } },
-      },
-    });
+    excelHeaderCell(ws, { row: headerRowIdx, col }, label, isRightAlignedCol(col) ? 'right' : 'left', 10.5);
   });
+
+  // Pre-load all line-item thumbnails in parallel (sharp is async).
+  const itemImageBuffers = await Promise.all(quote.items.map((it) => loadImageBuffer(it.product_image_path, 72)));
 
   for (let idx = 0; idx < quote.items.length; idx++) {
     const item = quote.items[idx];
@@ -1175,35 +1162,17 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         numFmt = '#,##0.##';
       }
 
-      Cell.setValue(ws, { row: rowIdx, col }, val);
-      Cell.setStyle(ws, { row: rowIdx, col }, {
-        font: {
-          name: 'Calibri',
-          size: 10.5,
-          bold: col === totalCols,
-          color: { argb: 'FF0F172A' },
-        },
-        fill: {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: col === 4 ? hexToArgb(item.color_hex) : rowBg },
-        },
-        border: {
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        },
-        alignment: {
-          vertical: 'middle',
-          horizontal: isRightAlignedCol(col) ? 'right' : 'left',
-          wrapText:
-            col === 2 || col === 3 || col === 5 || col === 6 || col === noteCol || (hasAddCostDesc && col === 10),
-        },
-        ...(numFmt ? { numFmt } : {}),
+      excelDataCell(ws, { row: rowIdx, col }, val, {
+        align: isRightAlignedCol(col) ? 'right' : 'left',
+        wrapText:
+          col === 2 || col === 3 || col === 5 || col === 6 || col === noteCol || (hasAddCostDesc && col === 10),
+        bold: col === totalCols,
+        numFmt,
+        fillArgb: col === 4 ? hexToArgb(item.color_hex) : rowBg,
       });
     });
 
-    const imgBuf = await loadImageBuffer(item.product_image_path, 72);
+    const imgBuf = itemImageBuffers[idx];
     if (imgBuf) {
       const imgId = Image.add(wb, { buffer: imgBuf, extension: 'png' });
       Image.place(ws, imgId, {
@@ -1390,6 +1359,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   let totalLinearFeet = 0;
 
+  // Pre-load all line-item thumbnails in parallel (sharp is async).
+  const quoteImageBuffers = await Promise.all(quote.items.map((it) => loadImageBuffer(it.product_image_path, 64)));
+
   for (let i = 0; i < quote.items.length; i++) {
     if (y > doc.page.height - 95) {
       doc.addPage();
@@ -1415,7 +1387,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     // Col 1: Product (thumbnail + vertically centered name + ($price) stack)
     const thumbX = cols[1].x + 5;
     const thumbY = y + (rowH - 30) / 2;
-    const imgBuf = await loadImageBuffer(item.product_image_path, 64);
+    const imgBuf = quoteImageBuffers[i];
     if (imgBuf) {
       doc.image(imgBuf, thumbX, thumbY, { width: 30, height: 30 });
     } else {
@@ -1718,19 +1690,7 @@ export async function buildIssuedQuotesExcel(quotes: IssuedQuoteRow[]): Promise<
   const headers = ['Quote Number', 'Date', 'Customer', 'Total (CAD)'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
-    const col = idx + 1;
-    Cell.setValue(ws, { row: headerRowIdx, col }, label);
-    Cell.setStyle(ws, { row: headerRowIdx, col }, {
-      font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 4 ? 'right' : 'left' },
-      border: {
-        top: { style: 'thin', color: { argb: 'FF084091' } },
-        bottom: { style: 'thin', color: { argb: 'FF084091' } },
-        left: { style: 'thin', color: { argb: 'FF3563A8' } },
-        right: { style: 'thin', color: { argb: 'FF3563A8' } },
-      },
-    });
+    excelHeaderCell(ws, { row: headerRowIdx, col: idx + 1 }, label, idx === 3 ? 'right' : 'left');
   });
 
   let sumCents = 0;
@@ -1747,17 +1707,10 @@ export async function buildIssuedQuotesExcel(quotes: IssuedQuoteRow[]): Promise<
     const rowBg = idx % 2 === 1 ? 'FFF7F7F7' : 'FFFFFFFF';
     values.forEach((val, vIdx) => {
       const col = vIdx + 1;
-      Cell.setValue(ws, { row: rowIdx, col }, val);
-      Cell.setStyle(ws, { row: rowIdx, col }, {
-        font: { name: 'Calibri', size: 10.5, color: { argb: 'FF0F172A' } },
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } },
-        border: {
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        },
-        alignment: { vertical: 'middle', horizontal: col === 4 ? 'right' : 'left' },
-        ...(col === 4 ? { numFmt: '$#,##0.00' } : {}),
+      excelDataCell(ws, { row: rowIdx, col }, val, {
+        align: col === 4 ? 'right' : 'left',
+        numFmt: col === 4 ? '$#,##0.00' : undefined,
+        fillArgb: rowBg,
       });
     });
   });

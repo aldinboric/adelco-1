@@ -38,6 +38,7 @@ const VIEW_FALLBACK = (
     Loading view...
   </div>
 );
+import { roleHasPermission, type PermissionKey } from '../shared/permissions.ts';
 import type {
   AppTab,
   AuthUser,
@@ -47,7 +48,6 @@ import type {
   QuoteDraftItem,
   QuoteDraftState,
   ToastMessage,
-  UserPermissions,
 } from './types';
 import { apiFetch, setUnauthorizedHandler } from './utils/api';
 import { centsToDollarsInput, todayIsoDate } from './utils/format';
@@ -61,10 +61,9 @@ function createEmptyDraft(): QuoteDraftState {
   };
 }
 
-function hasPermission(user: AuthUser | null, key: keyof UserPermissions): boolean {
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  return Boolean(user.permissions[key]);
+function hasPermission(user: AuthUser | null, key: PermissionKey): boolean {
+  if (!user || !user.is_active) return false;
+  return roleHasPermission(user.role, user.permissions, key);
 }
 
 interface CopyQuoteApiResponse {

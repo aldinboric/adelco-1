@@ -20,14 +20,13 @@ import {
   buildProductsPdf,
 } from '../exports.ts';
 import {
+  EXCEL_MIME,
   normalizeHex,
   paramAsString,
   parseCents,
   parsePositiveInt,
   sendBufferDownload,
 } from '../validation.ts';
-
-const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 // Whitelist of allowed upload types. The declared mimetype is client-controlled,
 // so the actual magic bytes are verified again in hasValidImageMagic().
@@ -105,6 +104,114 @@ function applyReorder(
 
 const MAX_MATERIALS_PER_PRODUCT = 50;
 const MAX_MEASURE = 1_000_000;
+
+// ---------------------------------------------------------------------------
+// Shared route-handler factories (colors & products endpoints are structurally
+// identical — only the table and labels differ).
+// ---------------------------------------------------------------------------
+
+function makeAvailabilityHandler(table: 'metal_colors' | 'metal_products', label: string) {
+  return (req: Request, res: Response): void => {
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: `Invalid ${label.toLowerCase()} ID.` });
+      return;
+    }
+    const isAvailable = req.body?.is_available ? 1 : 0;
+    const db = getDb();
+    const existing = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id);
+    if (!existing) {
+      res.status(404).json({ error: `${label} not found.` });
+      return;
+    }
+    db.prepare(`UPDATE ${table} SET is_available = ? WHERE id = ?`).run(isAvailable, id);
+    res.json(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id));
+  };
+}
+
+function makeReorderHandler(table: 'metal_colors' | 'metal_products') {
+  return (req: Request, res: Response): void => {
+    const result = applyReorder(table, req.body?.ids);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, order: result.order });
+  };
+}
+
+/** Runs an async export builder and converts failures into a clean 500 JSON. */
+async function sendExport(
+  res: Response,
+  contentType: string,
+  filename: string,
+  build: () => Promise<Buffer>
+): Promise<void> {
+  try {
+    sendBufferDownload(res, contentType, filename, await build());
+  } catch (err) {
+    console.error(`Export ${filename} failed:`, err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Export failed. Please try again.' });
+    }
+  }
+}
+
+interface ColorInput {
+  name: string;
+  hex: string;
+  priceCents: number;
+}
+
+function parseColorInput(body: unknown): { ok: true; value: ColorInput } | { ok: false; error: string } {
+  const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const name = typeof b.name === 'string' ? b.name.trim().slice(0, 120) : '';
+  const hex = normalizeHex(b.hex_code);
+  const priceCents = parseCents(b.price_per_lf_cents);
+  if (!name) return { ok: false, error: 'Color name is required.' };
+  if (!hex) return { ok: false, error: 'Valid 6-digit HEX code (e.g. #084091) is required.' };
+  if (priceCents === null) {
+    return { ok: false, error: 'Valid non-negative price per linear ft is required.' };
+  }
+  return { ok: true, value: { name, hex, priceCents } };
+}
+
+interface ProductInput {
+  name: string;
+  materialType: string;
+  priceCents: number;
+  removeImage: boolean;
+  materials: ParsedMaterialInput[];
+  imageValid: boolean;
+}
+
+function parseProductInput(req: Request): { ok: true; value: ProductInput } | { ok: false; error: string } {
+  const b = req.body ?? {};
+  const name = typeof b.name === 'string' ? b.name.trim().slice(0, 120) : '';
+  const materialType = typeof b.material_type === 'string' ? b.material_type.trim().slice(0, 200) : '';
+  const priceCents = parseCents(b.price_per_lf_cents);
+  const removeImage = b.remove_image === 'true' || b.remove_image === true;
+
+  if (!name) return { ok: false, error: 'Product name is required.' };
+  if (priceCents === null) {
+    return { ok: false, error: 'Valid non-negative price per linear ft is required.' };
+  }
+  if (req.file && !hasValidImageMagic(req.file.buffer)) {
+    return { ok: false, error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' };
+  }
+  const materialsResult = parseMaterialsInput(b.materials);
+  if (!materialsResult.ok) return materialsResult;
+
+  return {
+    ok: true,
+    value: { name, materialType, priceCents, removeImage, materials: materialsResult.materials, imageValid: true },
+  };
+}
+
+/** material_type column value kept in sync with the materials rows (legacy readers). */
+function materialTypeColumnValue(materials: ParsedMaterialInput[], fallback: string): string | null {
+  return materials.length > 0 ? materials.map((m) => m.name).join(', ') : fallback || null;
+}
 
 interface ParsedMaterialInput {
   name: string;
@@ -202,6 +309,18 @@ function replaceProductMaterials(
   })();
 }
 
+function getAllColors(): MetalColorRow[] {
+  return getDb()
+    .prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC')
+    .all() as MetalColorRow[];
+}
+
+function getAllProducts(): MetalProductRow[] {
+  return getDb()
+    .prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC')
+    .all() as MetalProductRow[];
+}
+
 export function createCatalogRouter(): Router {
   const router = Router();
 
@@ -239,29 +358,17 @@ export function createCatalogRouter(): Router {
     requireAuth,
     requireAnyPermission('colors_view', 'customer_quote'),
     (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
-      res.json(rows);
+      res.json(getAllColors());
     }
   );
 
   router.post('/colors', requireAuth, requirePermission('colors_manage'), (req: Request, res: Response) => {
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
-    const hex = normalizeHex(req.body?.hex_code);
-    const priceCents = parseCents(req.body?.price_per_lf_cents);
-
-    if (!name) {
-      res.status(400).json({ error: 'Color name is required.' });
+    const parsed = parseColorInput(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
       return;
     }
-    if (!hex) {
-      res.status(400).json({ error: 'Valid 6-digit HEX code (e.g. #084091) is required.' });
-      return;
-    }
-    if (priceCents === null) {
-      res.status(400).json({ error: 'Valid non-negative price per linear ft is required.' });
-      return;
-    }
+    const { name, hex, priceCents } = parsed.value;
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -279,26 +386,16 @@ export function createCatalogRouter(): Router {
 
   router.put('/colors/:id', requireAuth, requirePermission('colors_manage'), (req: Request, res: Response) => {
     const id = parsePositiveInt(req.params.id);
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
-    const hex = normalizeHex(req.body?.hex_code);
-    const priceCents = parseCents(req.body?.price_per_lf_cents);
-
     if (!id) {
       res.status(400).json({ error: 'Invalid color ID.' });
       return;
     }
-    if (!name) {
-      res.status(400).json({ error: 'Color name is required.' });
+    const parsed = parseColorInput(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
       return;
     }
-    if (!hex) {
-      res.status(400).json({ error: 'Valid 6-digit HEX code is required.' });
-      return;
-    }
-    if (priceCents === null) {
-      res.status(400).json({ error: 'Valid price per linear ft is required.' });
-      return;
-    }
+    const { name, hex, priceCents } = parsed.value;
 
     const db = getDb();
     const existing = db.prepare('SELECT * FROM metal_colors WHERE id = ?').get(id);
@@ -320,36 +417,14 @@ export function createCatalogRouter(): Router {
     '/colors/:id/availability',
     requireAuth,
     requirePermission('colors_manage'),
-    (req: Request, res: Response) => {
-      const id = parsePositiveInt(req.params.id);
-      if (!id) {
-        res.status(400).json({ error: 'Invalid color ID.' });
-        return;
-      }
-      const isAvailable = req.body?.is_available ? 1 : 0;
-      const db = getDb();
-      const existing = db.prepare('SELECT * FROM metal_colors WHERE id = ?').get(id);
-      if (!existing) {
-        res.status(404).json({ error: 'Color not found.' });
-        return;
-      }
-      db.prepare('UPDATE metal_colors SET is_available = ? WHERE id = ?').run(isAvailable, id);
-      res.json(db.prepare('SELECT * FROM metal_colors WHERE id = ?').get(id));
-    }
+    makeAvailabilityHandler('metal_colors', 'Color')
   );
 
   router.patch(
     '/colors/reorder',
     requireAuth,
     requirePermission('catalog_reorder'),
-    (req: Request, res: Response) => {
-      const result = applyReorder('metal_colors', req.body?.ids);
-      if (!result.ok) {
-        res.status(400).json({ error: result.error });
-        return;
-      }
-      res.json({ ok: true, order: result.order });
-    }
+    makeReorderHandler('metal_colors')
   );
 
   router.delete('/colors/:id', requireAuth, requirePermission('colors_manage'), (req: Request, res: Response) => {
@@ -371,11 +446,10 @@ export function createCatalogRouter(): Router {
     '/colors/export/excel',
     requireAuth,
     requirePermission('colors_view', 'exports'),
-    async (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
-      const buf = await buildColorsExcel(rows);
-      sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Colors.xlsx', buf);
+    (_req: Request, res: Response) => {
+      void sendExport(res, EXCEL_MIME, 'AdelCo-Colors.xlsx', async () =>
+        buildColorsExcel(getAllColors())
+      );
     }
   );
 
@@ -383,11 +457,10 @@ export function createCatalogRouter(): Router {
     '/colors/export/pdf',
     requireAuth,
     requirePermission('colors_view', 'exports'),
-    async (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_colors ORDER BY sort_order ASC, id ASC').all() as MetalColorRow[];
-      const buf = await buildColorsPdf(rows);
-      sendBufferDownload(res, 'application/pdf', 'AdelCo-Colors.pdf', buf);
+    (_req: Request, res: Response) => {
+      void sendExport(res, 'application/pdf', 'AdelCo-Colors.pdf', async () =>
+        buildColorsPdf(getAllColors())
+      );
     }
   );
 
@@ -399,9 +472,7 @@ export function createCatalogRouter(): Router {
     requireAuth,
     requireAnyPermission('products_view', 'customer_quote'),
     (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      res.json(attachMaterials(db, rows));
+      res.json(attachMaterials(getDb(), getAllProducts()));
     }
   );
 
@@ -412,33 +483,14 @@ export function createCatalogRouter(): Router {
     uploadProductImage.single('image'),
     async (req: Request, res: Response) => {
       try {
-        const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
-        const materialType =
-          typeof req.body?.material_type === 'string' ? req.body.material_type.trim().slice(0, 200) : '';
-        const priceCents = parseCents(req.body?.price_per_lf_cents);
+        const parsed = parseProductInput(req);
+        if (!parsed.ok) {
+          res.status(400).json({ error: parsed.error });
+          return;
+        }
+        const { name, materialType, priceCents, materials } = parsed.value;
 
-        if (!name) {
-          res.status(400).json({ error: 'Product name is required.' });
-          return;
-        }
-        if (priceCents === null) {
-          res.status(400).json({ error: 'Valid non-negative price per linear ft is required.' });
-          return;
-        }
-        if (req.file && !hasValidImageMagic(req.file.buffer)) {
-          res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
-          return;
-        }
-        const materialsResult = parseMaterialsInput(req.body?.materials);
-        if (!materialsResult.ok) {
-          res.status(400).json({ error: materialsResult.error });
-          return;
-        }
-
-        let imagePath: string | null = null;
-        if (req.file) {
-          imagePath = await processProductImage(req.file.buffer);
-        }
+        const imagePath = req.file ? await processProductImage(req.file.buffer) : null;
 
         const db = getDb();
         const now = new Date().toISOString();
@@ -449,18 +501,9 @@ export function createCatalogRouter(): Router {
           .prepare(
             'INSERT INTO metal_products (name, image_path, material_type, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)'
           )
-          .run(
-            name,
-            imagePath,
-            materialsResult.materials.length > 0
-              ? materialsResult.materials.map((m) => m.name).join(', ')
-              : materialType || null,
-            priceCents,
-            maxSort.m + 1,
-            now
-          );
+          .run(name, imagePath, materialTypeColumnValue(materials, materialType), priceCents, maxSort.m + 1, now);
         const productId = Number(info.lastInsertRowid);
-        replaceProductMaterials(db, productId, materialsResult.materials);
+        replaceProductMaterials(db, productId, materials);
         const created = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(productId) as MetalProductRow;
         res.status(201).json(attachMaterials(db, [created])[0]);
       } catch (err) {
@@ -479,33 +522,16 @@ export function createCatalogRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const id = parsePositiveInt(req.params.id);
-        const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 120) : '';
-        const materialType =
-          typeof req.body?.material_type === 'string' ? req.body.material_type.trim().slice(0, 200) : '';
-        const priceCents = parseCents(req.body?.price_per_lf_cents);
-        const removeImage = req.body?.remove_image === 'true' || req.body?.remove_image === true;
-
         if (!id) {
           res.status(400).json({ error: 'Invalid product ID.' });
           return;
         }
-        if (!name) {
-          res.status(400).json({ error: 'Product name is required.' });
+        const parsed = parseProductInput(req);
+        if (!parsed.ok) {
+          res.status(400).json({ error: parsed.error });
           return;
         }
-        if (priceCents === null) {
-          res.status(400).json({ error: 'Valid price per linear ft is required.' });
-          return;
-        }
-        if (req.file && !hasValidImageMagic(req.file.buffer)) {
-          res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
-          return;
-        }
-        const materialsResult = parseMaterialsInput(req.body?.materials);
-        if (!materialsResult.ok) {
-          res.status(400).json({ error: materialsResult.error });
-          return;
-        }
+        const { name, materialType, priceCents, removeImage, materials } = parsed.value;
 
         const db = getDb();
         const existing = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id) as
@@ -525,16 +551,8 @@ export function createCatalogRouter(): Router {
 
         db.prepare(
           'UPDATE metal_products SET name = ?, image_path = ?, material_type = ?, price_per_lf_cents = ? WHERE id = ?'
-        ).run(
-          name,
-          nextImagePath,
-          materialsResult.materials.length > 0
-            ? materialsResult.materials.map((m) => m.name).join(', ')
-            : materialType || null,
-          priceCents,
-          id
-        );
-        replaceProductMaterials(db, id, materialsResult.materials);
+        ).run(name, nextImagePath, materialTypeColumnValue(materials, materialType), priceCents, id);
+        replaceProductMaterials(db, id, materials);
 
         if ((req.file || removeImage) && existing.image_path && existing.image_path !== nextImagePath) {
           removeImageFileIfUnused(existing.image_path);
@@ -553,36 +571,14 @@ export function createCatalogRouter(): Router {
     '/products/:id/availability',
     requireAuth,
     requirePermission('products_manage'),
-    (req: Request, res: Response) => {
-      const id = parsePositiveInt(req.params.id);
-      if (!id) {
-        res.status(400).json({ error: 'Invalid product ID.' });
-        return;
-      }
-      const isAvailable = req.body?.is_available ? 1 : 0;
-      const db = getDb();
-      const existing = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id);
-      if (!existing) {
-        res.status(404).json({ error: 'Product not found.' });
-        return;
-      }
-      db.prepare('UPDATE metal_products SET is_available = ? WHERE id = ?').run(isAvailable, id);
-      res.json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id));
-    }
+    makeAvailabilityHandler('metal_products', 'Product')
   );
 
   router.patch(
     '/products/reorder',
     requireAuth,
     requirePermission('catalog_reorder'),
-    (req: Request, res: Response) => {
-      const result = applyReorder('metal_products', req.body?.ids);
-      if (!result.ok) {
-        res.status(400).json({ error: result.error });
-        return;
-      }
-      res.json({ ok: true, order: result.order });
-    }
+    makeReorderHandler('metal_products')
   );
 
   router.delete('/products/:id', requireAuth, requirePermission('products_manage'), (req: Request, res: Response) => {
@@ -608,11 +604,10 @@ export function createCatalogRouter(): Router {
     '/products/export/excel',
     requireAuth,
     requirePermission('products_view', 'exports'),
-    async (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      const buf = await buildProductsExcel(attachMaterials(db, rows));
-      sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Products.xlsx', buf);
+    (_req: Request, res: Response) => {
+      void sendExport(res, EXCEL_MIME, 'AdelCo-Products.xlsx', async () =>
+        buildProductsExcel(attachMaterials(getDb(), getAllProducts()))
+      );
     }
   );
 
@@ -620,11 +615,10 @@ export function createCatalogRouter(): Router {
     '/products/export/pdf',
     requireAuth,
     requirePermission('products_view', 'exports'),
-    async (_req: Request, res: Response) => {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      const buf = await buildProductsPdf(attachMaterials(db, rows));
-      sendBufferDownload(res, 'application/pdf', 'AdelCo-Products.pdf', buf);
+    (_req: Request, res: Response) => {
+      void sendExport(res, 'application/pdf', 'AdelCo-Products.pdf', async () =>
+        buildProductsPdf(attachMaterials(getDb(), getAllProducts()))
+      );
     }
   );
 

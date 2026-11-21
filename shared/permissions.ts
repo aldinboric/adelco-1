@@ -45,18 +45,10 @@ export function sanitizePermissions(
   fallback: UserPermissions = DEFAULT_USER_PERMISSIONS
 ): UserPermissions {
   const src = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-  const result: UserPermissions = {
-    customer_quote: typeof src.customer_quote === 'boolean' ? src.customer_quote : fallback.customer_quote,
-    issued_quotes_view: typeof src.issued_quotes_view === 'boolean' ? src.issued_quotes_view : fallback.issued_quotes_view,
-    issued_quotes_manage: typeof src.issued_quotes_manage === 'boolean' ? src.issued_quotes_manage : fallback.issued_quotes_manage,
-    products_view: typeof src.products_view === 'boolean' ? src.products_view : fallback.products_view,
-    products_manage: typeof src.products_manage === 'boolean' ? src.products_manage : fallback.products_manage,
-    colors_view: typeof src.colors_view === 'boolean' ? src.colors_view : fallback.colors_view,
-    colors_manage: typeof src.colors_manage === 'boolean' ? src.colors_manage : fallback.colors_manage,
-    catalog_reorder: typeof src.catalog_reorder === 'boolean' ? src.catalog_reorder : fallback.catalog_reorder,
-    exports: typeof src.exports === 'boolean' ? src.exports : fallback.exports,
-    backup_settings: typeof src.backup_settings === 'boolean' ? src.backup_settings : fallback.backup_settings,
-  };
+  const result = {} as UserPermissions;
+  for (const key of Object.keys(ALL_PERMISSIONS) as PermissionKey[]) {
+    result[key] = typeof src[key] === 'boolean' ? src[key] : fallback[key];
+  }
 
   // Enforce coherent dependency: manage implies view
   if (result.issued_quotes_manage) result.issued_quotes_view = true;
@@ -64,4 +56,14 @@ export function sanitizePermissions(
   if (result.colors_manage) result.colors_view = true;
 
   return result;
+}
+
+/** Single permission check shared by the backend (auth.ts) and frontend (App.tsx). */
+export function roleHasPermission(
+  role: UserRole,
+  permissions: UserPermissions,
+  key: PermissionKey
+): boolean {
+  if (role === 'admin') return true;
+  return Boolean(permissions[key]);
 }

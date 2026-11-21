@@ -14,6 +14,7 @@ import type {
   MetalProduct,
   QuoteDraftItem,
   QuoteDraftState,
+  QuotePayloadItem,
 } from '../types';
 import { apiFetch } from '../utils/api';
 import { dollarsInputToCents, downloadBlobResponse, formatCAD } from '../utils/format';
@@ -161,35 +162,13 @@ export function CustomerQuoteView({
     (r) => (r.colorAvailable && r.productAvailable) || r.hasColorIssue
   );
 
-  const validateBeforeSubmit = (): Array<{
-    product_id: number;
-    material_type: string | null;
-    color_id: number;
-    width_in: number | null;
-    gauge: string | null;
-    length_ft: number | null;
-    linear_feet: number;
-    additional_costs_cents: number;
-    additional_costs_description: string | null;
-    note: string | null;
-  }> | null => {
+  const validateBeforeSubmit = (): QuotePayloadItem[] | null => {
     if (draft.items.length === 0) {
       setValidationError('Add at least one product before issuing or exporting.');
       return null;
     }
 
-    const payloadItems: Array<{
-      product_id: number;
-      material_type: string | null;
-      color_id: number;
-      width_in: number | null;
-      gauge: string | null;
-      length_ft: number | null;
-      linear_feet: number;
-      additional_costs_cents: number;
-      additional_costs_description: string | null;
-      note: string | null;
-    }> = [];
+    const payloadItems: QuotePayloadItem[] = [];
     for (let i = 0; i < computedRows.length; i++) {
       const r = computedRows[i];
       if (r.hasProductIssue || !r.productAvailable || !r.item.product_id) {

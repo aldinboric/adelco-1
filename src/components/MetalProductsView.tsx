@@ -1,8 +1,6 @@
 import {
   Ban,
   CheckCircle2,
-  FileSpreadsheet,
-  FileText,
   GripVertical,
   ImagePlus,
   Pencil,
@@ -12,16 +10,19 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useReorderableList } from '../hooks/useReorderableList';
-import type { MetalProduct } from '../types';
-import { apiFetch, downloadProtectedFile } from '../utils/api';
+import type { MetalProduct, ProductMaterial } from '../types';
+import { apiFetch } from '../utils/api';
 import {
   centsToDollarsInput,
   dollarsInputToCents,
   formatCAD,
+  formatMaterialMeasures,
   getImageUrl,
 } from '../utils/format';
 import { ConfirmModal } from './ConfirmModal';
+import { ExportButtons } from './ExportButtons';
 import { ProductThumbnail } from './ProductThumbnail';
+import { TableSkeleton } from './TableSkeleton';
 
 interface MetalProductsViewProps {
   products: MetalProduct[];
@@ -54,16 +55,65 @@ function newMaterialRow(pricePrefill = ''): MaterialRowDraft {
   };
 }
 
-// Compact "36″ · 26 ga · 10 ft" label for a material's saved measures.
-function materialMeasuresLabel(m: { width_in: number | null; gauge: string | null; length_ft: number | null }): string | null {
-  const parts: string[] = [];
-  if (m.width_in != null && m.width_in > 0) parts.push(`${m.width_in}"`);
-  if (m.gauge?.trim()) {
-    const g = m.gauge.trim();
-    parts.push(/^\d+(\.\d+)?$/.test(g) ? `${g} ga` : g);
-  }
-  if (m.length_ft != null && m.length_ft > 0) parts.push(`${m.length_ft}'`);
-  return parts.length > 0 ? parts.join(' · ') : null;
+// Material names for a product, falling back to the legacy comma-separated column.
+function materialNamesOf(p: MetalProduct): string[] {
+  const mats = p.materials ?? [];
+  if (mats.length > 0) return mats.map((m) => m.name);
+  return (p.material_type ?? '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
+/** Material-type chips cell. */
+function MaterialChips({ product }: { product: MetalProduct }) {
+  const names = materialNamesOf(product);
+  if (names.length === 0) return <span className="text-slate-300">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {names.map((m) => (
+        <span
+          key={m}
+          className="inline-flex items-center rounded-full border border-[#084091]/20 bg-[#084091]/5 px-2 py-0.5 text-[11px] font-medium text-[#084091]"
+        >
+          {m}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Per-material measures lines cell, e.g. "Aluminum: 36\" · 26 Ga · 10'". */
+function MaterialMeasuresCell({ product }: { product: MetalProduct }) {
+  const mats = product.materials ?? [];
+  if (mats.length === 0) return <span className="text-slate-300">—</span>;
+  return (
+    <span className="block space-y-0.5">
+      {mats.map((m) => {
+        const label = formatMaterialMeasures(m);
+        return (
+          <span key={m.id} className="block">
+            {label ? `${m.name}: ${label}` : m.name}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Per-material price lines cell; falls back to the product-level price. */
+function MaterialPricesCell({ product }: { product: MetalProduct }) {
+  const mats = product.materials ?? [];
+  if (mats.length === 0) return <>{formatCAD(product.price_per_lf_cents)}</>;
+  return (
+    <span className="block space-y-0.5">
+      {mats.map((m: ProductMaterial) => (
+        <span key={m.id} className="block">
+          {m.name}: {formatCAD(m.price_per_lf_cents)}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export function MetalProductsView({
@@ -347,32 +397,11 @@ export function MetalProductsView({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {canExport && (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile('/api/products/export/excel', 'adelco-products.xlsx').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
-                Export Excel
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile('/api/products/export/pdf', 'adelco-products.pdf').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileText className="h-3.5 w-3.5 text-[#084091]" />
-                Export PDF
-              </button>
-            </>
+            <ExportButtons
+              baseUrl="/api/products/export"
+              fallbackBaseName="adelco-products"
+              onError={(msg) => onNotify('error', msg)}
+            />
           )}
           {canManage && (
             <button
@@ -390,16 +419,7 @@ export function MetalProductsView({
       {/* Table (ID, Product, Price per linear ft, Status, Actions — NO Color column) */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {loading ? (
-          <div className="divide-y divide-slate-100 p-4">
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} className="flex h-12 items-center gap-4 py-2">
-                <div className="h-4 w-8 animate-pulse rounded bg-slate-200" />
-                <div className="h-10 w-10 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-56 animate-pulse rounded bg-slate-200" />
-                <div className="ml-auto h-4 w-20 animate-pulse rounded bg-slate-200" />
-              </div>
-            ))}
-          </div>
+          <TableSkeleton rows={4} cells={['h-4 w-8', 'h-10 w-10', 'h-4 w-56']} />
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded border border-slate-200 bg-[#f7f7f7] text-slate-400">
@@ -503,79 +523,21 @@ export function MetalProductsView({
                           unavailable ? 'text-slate-400' : 'text-slate-700'
                         }`}
                       >
-                        {(() => {
-                          const mats = product.materials ?? [];
-                          const names =
-                            mats.length > 0
-                              ? mats.map((m) => m.name)
-                              : (product.material_type ?? '')
-                                  .split(',')
-                                  .map((m) => m.trim())
-                                  .filter(Boolean);
-                          return names.length > 0 ? (
-                            <span className="inline-flex flex-wrap gap-1">
-                              {names.map((m) => (
-                                <span
-                                  key={m}
-                                  className="inline-flex items-center rounded-full border border-[#084091]/20 bg-[#084091]/5 px-2 py-0.5 text-[11px] font-medium text-[#084091]"
-                                >
-                                  {m}
-                                </span>
-                              ))}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          );
-                        })()}
+                        <MaterialChips product={product} />
                       </td>
                       <td
                         className={`px-4 py-2 text-left text-[11px] leading-relaxed ${
                           unavailable ? 'text-slate-400' : 'text-slate-600'
                         }`}
                       >
-                        {(() => {
-                          const mats = product.materials ?? [];
-                          if (mats.length === 0) {
-                            return <span className="text-slate-300">—</span>;
-                          }
-                          const lines = mats.map((m) => {
-                            const label = materialMeasuresLabel(m);
-                            return label ? `${m.name}: ${label}` : null;
-                          });
-                          const any = lines.filter(Boolean);
-                          return any.length > 0 ? (
-                            <span className="block space-y-0.5">
-                              {lines.map((line, i) => (
-                                <span key={mats[i].id} className="block">
-                                  {line ?? mats[i].name}
-                                </span>
-                              ))}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          );
-                        })()}
+                        <MaterialMeasuresCell product={product} />
                       </td>
                       <td
                         className={`px-4 py-2 text-right font-mono text-xs font-medium tabular-nums ${
                           unavailable ? 'text-slate-400' : 'text-slate-900'
                         }`}
                       >
-                        {(() => {
-                          const mats = product.materials ?? [];
-                          if (mats.length === 0) {
-                            return formatCAD(product.price_per_lf_cents);
-                          }
-                          return (
-                            <span className="block space-y-0.5">
-                              {mats.map((m) => (
-                                <span key={m.id} className="block">
-                                  {m.name}: {formatCAD(m.price_per_lf_cents)}
-                                </span>
-                              ))}
-                            </span>
-                          );
-                        })()}
+                        <MaterialPricesCell product={product} />
                       </td>
                       <td className="px-4 py-2 text-left text-xs font-medium">
                         {unavailable ? (

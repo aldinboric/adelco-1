@@ -14,6 +14,8 @@ import type { IssuedQuote, IssuedQuoteDetail } from '../types';
 import { apiFetch, downloadProtectedFile } from '../utils/api';
 import { formatCAD } from '../utils/format';
 import { ConfirmModal } from './ConfirmModal';
+import { ExportButtons } from './ExportButtons';
+import { TableSkeleton } from './TableSkeleton';
 
 interface IssuedQuotesViewProps {
   onOpenQuoteDetail: (detail: IssuedQuoteDetail) => void;
@@ -193,30 +195,12 @@ export function IssuedQuotesView({
 
           {canExport && (
             <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile(`/api/quotes/export/excel?${qs}`, 'adelco-issued-quotes.xlsx').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
-                Export Excel
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile(`/api/quotes/export/pdf?${qs}`, 'adelco-issued-quotes.pdf').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileText className="h-3.5 w-3.5 text-[#084091]" />
-                Export PDF
-              </button>
+              <ExportButtons
+                baseUrl="/api/quotes/export"
+                query={`?${qs}`}
+                fallbackBaseName="adelco-issued-quotes"
+                onError={(msg) => onNotify('error', msg)}
+              />
             </div>
           )}
         </div>
@@ -238,16 +222,7 @@ export function IssuedQuotesView({
       {/* Issued Quotes Table */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {loading ? (
-          <div className="divide-y divide-slate-100 p-4">
-            {[1, 2, 3].map((n) => (
-              <div key={n} className="flex h-11 items-center gap-4 py-2">
-                <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-44 animate-pulse rounded bg-slate-200" />
-                <div className="ml-auto h-4 w-24 animate-pulse rounded bg-slate-200" />
-              </div>
-            ))}
-          </div>
+          <TableSkeleton rows={3} rowHeightClass="h-11" cells={['h-4 w-24', 'h-4 w-24', 'h-4 w-44']} />
         ) : quotes.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
             <h3 className="text-sm font-semibold text-slate-900">

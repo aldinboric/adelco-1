@@ -1,8 +1,6 @@
 import {
   Ban,
   CheckCircle2,
-  FileSpreadsheet,
-  FileText,
   GripVertical,
   Pencil,
   Plus,
@@ -12,7 +10,7 @@ import {
 import { useState } from 'react';
 import { useReorderableList } from '../hooks/useReorderableList';
 import type { MetalColor } from '../types';
-import { apiFetch, downloadProtectedFile } from '../utils/api';
+import { apiFetch } from '../utils/api';
 import {
   centsToDollarsInput,
   dollarsInputToCents,
@@ -20,6 +18,8 @@ import {
   normalizeHexPreview,
 } from '../utils/format';
 import { ConfirmModal } from './ConfirmModal';
+import { ExportButtons } from './ExportButtons';
+import { TableSkeleton } from './TableSkeleton';
 
 interface MetalColorsViewProps {
   colors: MetalColor[];
@@ -190,32 +190,11 @@ export function MetalColorsView({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {canExport && (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile('/api/colors/export/excel', 'adelco-colors.xlsx').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
-                Export Excel
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadProtectedFile('/api/colors/export/pdf', 'adelco-colors.pdf').catch(
-                    (err) => onNotify('error', err instanceof Error ? err.message : 'Export failed.')
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
-              >
-                <FileText className="h-3.5 w-3.5 text-[#084091]" />
-                Export PDF
-              </button>
-            </>
+            <ExportButtons
+              baseUrl="/api/colors/export"
+              fallbackBaseName="adelco-colors"
+              onError={(msg) => onNotify('error', msg)}
+            />
           )}
           {canManage && (
             <button
@@ -233,16 +212,7 @@ export function MetalColorsView({
       {/* Table */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {loading ? (
-          <div className="divide-y divide-slate-100 p-4">
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} className="flex h-11 items-center gap-4 py-2">
-                <div className="h-4 w-8 animate-pulse rounded bg-slate-200" />
-                <div className="h-6 w-10 animate-pulse rounded bg-slate-200" />
-                <div className="h-4 w-48 animate-pulse rounded bg-slate-200" />
-                <div className="ml-auto h-4 w-20 animate-pulse rounded bg-slate-200" />
-              </div>
-            ))}
-          </div>
+          <TableSkeleton rows={4} rowHeightClass="h-11" cells={['h-4 w-8', 'h-6 w-10', 'h-4 w-48']} />
         ) : colors.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
             <div className="mb-3 h-10 w-10 rounded border border-slate-200 bg-[#f7f7f7]" />

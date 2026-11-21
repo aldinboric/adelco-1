@@ -161,6 +161,10 @@ export function createBackupRouter(): Router {
       }
 
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adelco-restore-'));
+      // Staging paths live next to the live files (same filesystem) so the final
+      // swap is a rename — a crash mid-copy can no longer leave a half-written DB.
+      const stagedDbPath = `${DB_PATH}.restore-new`;
+      const stagedImagesDir = `${IMAGES_DIR}.restore-new`;
       try {
         const restoredDbPath = safelyExtractBackupArchive(req.file.buffer, tempDir);
 
@@ -196,18 +200,22 @@ export function createBackupRouter(): Router {
         closeDb();
         ensureDataDirs();
 
+        // Stage the restored DB next to the live one, then swap: the live DB is
+        // only replaced once the restored copy is fully written and validated.
+        fs.copyFileSync(restoredDbPath, stagedDbPath);
         for (const suffix of ['', '-wal', '-shm']) {
           const target = `${DB_PATH}${suffix}`;
           if (fs.existsSync(target)) {
             fs.unlinkSync(target);
           }
         }
-        fs.copyFileSync(restoredDbPath, DB_PATH);
+        fs.renameSync(stagedDbPath, DB_PATH);
 
         const restoredImagesDir = path.join(tempDir, 'images');
         if (fs.existsSync(restoredImagesDir)) {
+          fs.cpSync(restoredImagesDir, stagedImagesDir, { recursive: true });
           fs.rmSync(IMAGES_DIR, { recursive: true, force: true });
-          fs.cpSync(restoredImagesDir, IMAGES_DIR, { recursive: true });
+          fs.renameSync(stagedImagesDir, IMAGES_DIR);
         }
         fs.mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true });
         fs.mkdirSync(QUOTE_IMAGES_DIR, { recursive: true });
@@ -216,6 +224,14 @@ export function createBackupRouter(): Router {
         ensureInitialAdminUser();
         res.json({ restored: true });
       } catch (err) {
+        // Never leave staging leftovers behind; the live DB was not touched yet.
+        for (const p of [stagedDbPath, stagedImagesDir]) {
+          try {
+            fs.rmSync(p, { recursive: true, force: true });
+          } catch {
+            // ignore cleanup errors
+          }
+        }
         reloadDb();
         ensureInitialAdminUser();
         res.status(400).json({ error: err instanceof Error ? err.message : 'Restore failed.' });

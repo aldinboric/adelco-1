@@ -3,6 +3,9 @@ export {
   centsToDollarsInput,
   dollarsInputToCents,
   formatCAD,
+  formatGaugeLabel,
+  formatMaterialMeasures,
+  formatMeasureDimensions,
   todayIsoDate,
 } from '../../shared/format.ts';
 export { normalizeHexStrict as normalizeHexPreview } from '../../shared/hex.ts';

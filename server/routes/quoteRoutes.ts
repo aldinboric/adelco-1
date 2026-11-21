@@ -18,6 +18,7 @@ import {
   type ExportQuotePayload,
 } from '../exports.ts';
 import {
+  EXCEL_MIME,
   parseIsoDate,
   parseOptionalCustomerName,
   parsePositiveInt,
@@ -33,7 +34,35 @@ function errorMessageOrLog(err: unknown, fallback: string, logContext: string): 
   return fallback;
 }
 
-const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** Runs an async export builder and converts failures into a clean 500 JSON. */
+async function sendExport(
+  res: Response,
+  contentType: string,
+  filename: string,
+  build: () => Promise<Buffer>
+): Promise<void> {
+  try {
+    sendBufferDownload(res, contentType, filename, await build());
+  } catch (err) {
+    console.error(`Export ${filename} failed:`, err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Export failed. Please try again.' });
+    }
+  }
+}
+
+/** Fetches one issued quote with its items, or null when missing. */
+function getQuoteWithItems(
+  id: number
+): { quote: IssuedQuoteRow; items: IssuedQuoteItemRow[] } | null {
+  const db = getDb();
+  const quote = db.prepare('SELECT * FROM issued_quotes WHERE id = ?').get(id) as IssuedQuoteRow | undefined;
+  if (!quote) return null;
+  const items = db
+    .prepare('SELECT * FROM issued_quote_items WHERE quote_id = ? ORDER BY id ASC')
+    .all(id) as IssuedQuoteItemRow[];
+  return { quote, items };
+}
 
 function queryIssuedQuotes(query: Request['query']): IssuedQuoteRow[] {
   const db = getDb();
@@ -130,10 +159,9 @@ export function createQuoteRouter(): Router {
     '/quotes/export/excel',
     requireAuth,
     requirePermission('issued_quotes_view', 'exports'),
-    async (req: Request, res: Response) => {
+    (req: Request, res: Response) => {
       const quotes = queryIssuedQuotes(req.query);
-      const buf = await buildIssuedQuotesExcel(quotes);
-      sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Issued-Quotes.xlsx', buf);
+      void sendExport(res, EXCEL_MIME, 'AdelCo-Issued-Quotes.xlsx', () => buildIssuedQuotesExcel(quotes));
     }
   );
 
@@ -141,10 +169,9 @@ export function createQuoteRouter(): Router {
     '/quotes/export/pdf',
     requireAuth,
     requirePermission('issued_quotes_view', 'exports'),
-    async (req: Request, res: Response) => {
+    (req: Request, res: Response) => {
       const quotes = queryIssuedQuotes(req.query);
-      const buf = await buildIssuedQuotesPdf(quotes);
-      sendBufferDownload(res, 'application/pdf', 'AdelCo-Issued-Quotes.pdf', buf);
+      void sendExport(res, 'application/pdf', 'AdelCo-Issued-Quotes.pdf', () => buildIssuedQuotesPdf(quotes));
     }
   );
 
@@ -158,18 +185,12 @@ export function createQuoteRouter(): Router {
       res.status(400).json({ error: 'Invalid quote ID.' });
       return;
     }
-    const db = getDb();
-    const quote = db.prepare('SELECT * FROM issued_quotes WHERE id = ?').get(id) as
-      | IssuedQuoteRow
-      | undefined;
-    if (!quote) {
+    const found = getQuoteWithItems(id);
+    if (!found) {
       res.status(404).json({ error: 'Issued quote not found.' });
       return;
     }
-    const items = db
-      .prepare('SELECT * FROM issued_quote_items WHERE quote_id = ? ORDER BY id ASC')
-      .all(id) as IssuedQuoteItemRow[];
-    res.json({ quote, items });
+    res.json(found);
   });
 
   router.post(
@@ -231,12 +252,7 @@ export function createQuoteRouter(): Router {
             );
           }
 
-          const quote = db.prepare('SELECT * FROM issued_quotes WHERE id = ?').get(quoteId) as IssuedQuoteRow;
-          const items = db
-            .prepare('SELECT * FROM issued_quote_items WHERE quote_id = ? ORDER BY id ASC')
-            .all(quoteId) as IssuedQuoteItemRow[];
-
-          return { quote, items };
+          return getQuoteWithItems(quoteId)!;
         })();
 
         res.status(201).json(result);
@@ -341,68 +357,51 @@ export function createQuoteRouter(): Router {
     }
   );
 
-  router.get(
-    '/quotes/:id/export/excel',
-    requireAuth,
-    requirePermission('issued_quotes_view', 'exports'),
-    async (req: Request, res: Response) => {
+  // Shared handler for the per-quote Excel/PDF exports.
+  const handleQuoteExport =
+    (format: 'excel' | 'pdf') =>
+    (req: Request, res: Response): void => {
       const id = parsePositiveInt(req.params.id);
       if (!id) {
         res.status(400).json({ error: 'Invalid quote ID.' });
         return;
       }
-      const db = getDb();
-      const quote = db.prepare('SELECT * FROM issued_quotes WHERE id = ?').get(id) as
-        | IssuedQuoteRow
-        | undefined;
-      if (!quote) {
+      const found = getQuoteWithItems(id);
+      if (!found) {
         res.status(404).json({ error: 'Quote not found.' });
         return;
       }
-      const items = db
-        .prepare('SELECT * FROM issued_quote_items WHERE quote_id = ? ORDER BY id ASC')
-        .all(id) as IssuedQuoteItemRow[];
-      const buf = await buildSingleQuoteExcel({
+      const { quote, items } = found;
+      const payload: ExportQuotePayload = {
         quote_number: quote.quote_number,
         quote_date: quote.quote_date,
         customer_name: quote.customer_name,
         total_cents: quote.total_cents,
         items,
-      });
-      sendBufferDownload(res, EXCEL_MIME, `AdelCo-Quote-${quote.quote_number}.xlsx`, buf);
-    }
+      };
+      if (format === 'excel') {
+        void sendExport(res, EXCEL_MIME, `AdelCo-Quote-${quote.quote_number}.xlsx`, () =>
+          buildSingleQuoteExcel(payload)
+        );
+      } else {
+        void sendExport(res, 'application/pdf', `AdelCo-Quote-${quote.quote_number}.pdf`, () =>
+          buildSingleQuotePdf(payload)
+        );
+      }
+    };
+
+  router.get(
+    '/quotes/:id/export/excel',
+    requireAuth,
+    requirePermission('issued_quotes_view', 'exports'),
+    handleQuoteExport('excel')
   );
 
   router.get(
     '/quotes/:id/export/pdf',
     requireAuth,
     requirePermission('issued_quotes_view', 'exports'),
-    async (req: Request, res: Response) => {
-      const id = parsePositiveInt(req.params.id);
-      if (!id) {
-        res.status(400).json({ error: 'Invalid quote ID.' });
-        return;
-      }
-      const db = getDb();
-      const quote = db.prepare('SELECT * FROM issued_quotes WHERE id = ?').get(id) as
-        | IssuedQuoteRow
-        | undefined;
-      if (!quote) {
-        res.status(404).json({ error: 'Quote not found.' });
-        return;
-      }
-      const items = db
-        .prepare('SELECT * FROM issued_quote_items WHERE quote_id = ? ORDER BY id ASC')
-        .all(id) as IssuedQuoteItemRow[];
-      const buf = await buildSingleQuotePdf({
-        quote_number: quote.quote_number,
-        quote_date: quote.quote_date,
-        customer_name: quote.customer_name,
-        total_cents: quote.total_cents,
-        items,
-      });
-      sendBufferDownload(res, 'application/pdf', `AdelCo-Quote-${quote.quote_number}.pdf`, buf);
-    }
+    handleQuoteExport('pdf')
   );
 
   return router;

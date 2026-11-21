@@ -1,6 +1,7 @@
 import { AlertCircle, Eye, EyeOff, LogIn } from 'lucide-react';
 import { useState } from 'react';
 import type { AuthUser } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface LoginViewProps {
   onLoginSuccess: (user: AuthUser) => void;
@@ -26,9 +27,8 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: trimmedUser, password }),
       });

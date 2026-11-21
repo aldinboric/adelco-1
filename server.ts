@@ -27,7 +27,12 @@ async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production' && fs.existsSync(distDir);
 
   const app = express();
-  app.set('trust proxy', 1);
+  // Only trust X-Forwarded-* headers when the app actually runs behind a reverse
+  // proxy (set TRUST_PROXY=1). When exposed directly, a client could spoof
+  // X-Forwarded-For and rotate IPs to bypass the rate limiters (req.ip would be
+  // attacker-controlled). trust proxy = false keeps req.ip = the real socket peer.
+  const trustProxy = process.env.TRUST_PROXY === '1' ? 1 : false;
+  app.set('trust proxy', trustProxy);
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
 
@@ -38,13 +43,10 @@ async function startServer() {
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('X-DNS-Prefetch-Control', 'off');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+
     if (isProduction) {
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    }
-
-    if (isProduction) {
       if (isHttpsRequest(req)) {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
       }
@@ -70,12 +72,12 @@ async function startServer() {
 
   // Global rate limit on API mutations + strict no-store caching + Same-Origin CSRF
   // validation on all /api/* routes
-  app.use('/api', rateLimitApiMutations);
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
-    verifySameOriginForMutations(req, res, next);
+    rateLimitApiMutations(req, res, next);
   });
+  app.use('/api', verifySameOriginForMutations);
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true });

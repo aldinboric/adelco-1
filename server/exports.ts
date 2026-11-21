@@ -1328,9 +1328,10 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       headerPadX: 8,
       headerFontSize: 8,
       cells: quote.items.map((it) => ({
-        // Measure only a capped prefix of long notes — the full text is wrapped
-        // inside the cell at render time and must not inflate the column (which
-        // would squeeze Total Price and wrap its currency amounts).
+        // Measure only a capped prefix of long notes so the column WIDTH stays
+        // stable (a full-length note must not inflate the column and squeeze
+        // Total Price). The full text is hard-wrapped inside the cell at render
+        // time and the row height grows to fit it (see the row loop below).
         text: (it.note?.trim() || '').slice(0, 24),
         fontSize: 7.5,
       })),
@@ -1363,14 +1364,26 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   const quoteImageBuffers = await Promise.all(quote.items.map((it) => loadImageBuffer(it.product_image_path, 64)));
 
   for (let i = 0; i < quote.items.length; i++) {
-    if (y > doc.page.height - 95) {
+    const item = quote.items[i];
+    totalLinearFeet += item.linear_feet;
+
+    // Dynamic row height: a row whose Notes text wraps onto more lines grows so
+    // the full note fits — no more "..." truncation. The Notes column width is
+    // fitted from a capped prefix (see above), so only the row height adapts.
+    const noteText = item.note?.trim() ?? '';
+    doc.font('Helvetica').fontSize(7.5);
+    const noteW = cols[5].w - 8;
+    const wrappedNote = noteText ? wrapPdfTextToWidth(doc, noteText, noteW, 7.5) : '';
+    const noteH = wrappedNote
+      ? measurePdfVisualTextHeight(doc, wrappedNote, { width: noteW })
+      : 0;
+    const rowH = Math.max(56, Math.ceil(noteH) + 10);
+
+    if (y + rowH > doc.page.height - 40) {
       doc.addPage();
       y = drawHeader(40);
     }
 
-    const item = quote.items[i];
-    totalLinearFeet += item.linear_feet;
-    const rowH = 56;
     if (i % 2 === 1) {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
@@ -1534,16 +1547,15 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     // all four sides (top/bottom gap equals left/right gap), so the text block is
     // equally distant from the left and right edges of its own column. The text
     // is hard-wrapped to the inner width (long words split mid-word) so it can
-    // never bleed into the Total Price column; ellipsis caps the height.
-    const noteText = item.note?.trim() ?? '';
+    // never bleed into the Total Price column. The row height was already grown
+    // above to fit the full wrapped note, so no ellipsis is applied — the whole
+    // note is always printed.
     if (noteText) {
       doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
-      const wrappedNote = wrapPdfTextToWidth(doc, noteText, cols[5].w - 8, 7.5);
       drawPdfCenteredText(doc, wrappedNote, cols[5].x + 4, y, rowH, {
-        width: cols[5].w - 8,
+        width: noteW,
         height: rowH - 8,
         align: 'justify',
-        ellipsis: true,
       });
     }
 

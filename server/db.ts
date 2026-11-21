@@ -32,6 +32,20 @@ export interface MetalProductRow {
   created_at: string;
 }
 
+export interface ProductMaterialRow {
+  id: number;
+  product_id: number;
+  name: string;
+  price_per_lf_cents: number;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export type MetalProductWithMaterials = MetalProductRow & { materials: ProductMaterialRow[] };
+
 export interface IssuedQuoteRow {
   id: number;
   quote_number: string;
@@ -180,6 +194,19 @@ function initSchema(db: Database.Database): void {
       FOREIGN KEY (quote_id) REFERENCES issued_quotes(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS product_materials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      price_per_lf_cents INTEGER NOT NULL CHECK (price_per_lf_cents >= 0),
+      width_in REAL,
+      gauge TEXT,
+      length_ft REAL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES metal_products(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS quote_sequences (
       year INTEGER PRIMARY KEY,
       last_seq INTEGER NOT NULL DEFAULT 0
@@ -218,6 +245,7 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON issued_quote_items(quote_id);
     CREATE INDEX IF NOT EXISTS idx_issued_quotes_date ON issued_quotes(quote_date);
+    CREATE INDEX IF NOT EXISTS idx_product_materials_product ON product_materials(product_id);
   `);
 
   ensureColumn(db, 'issued_quote_items', 'additional_costs_cents', 'additional_costs_cents INTEGER NOT NULL DEFAULT 0');
@@ -239,6 +267,74 @@ function initSchema(db: Database.Database): void {
       'UPDATE metal_products SET sort_order = (SELECT COUNT(*) FROM metal_products AS p2 WHERE p2.id < metal_products.id);'
     );
   });
+
+  migrateProductMaterials(db);
+}
+
+// One-time migration: unpack legacy comma-separated metal_products.material_type
+// values into product_materials rows, each inheriting the product's current price.
+// The material_type column stays in sync (comma-joined names) for legacy readers.
+function migrateProductMaterials(db: Database.Database): void {
+  const flag = db
+    .prepare("SELECT value FROM app_settings WHERE key = 'product_materials_migrated'")
+    .get() as { value: string } | undefined;
+  if (flag?.value === '1') return;
+
+  const products = db
+    .prepare('SELECT id, material_type, price_per_lf_cents FROM metal_products ORDER BY id ASC')
+    .all() as Array<{ id: number; material_type: string | null; price_per_lf_cents: number }>;
+  const hasMaterials = db.prepare('SELECT product_id, COUNT(*) AS cnt FROM product_materials GROUP BY product_id');
+  const existing = new Set(
+    (hasMaterials.all() as Array<{ product_id: number }>).map((r) => r.product_id)
+  );
+  const insert = db.prepare(`
+    INSERT INTO product_materials (product_id, name, price_per_lf_cents, sort_order, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    for (const p of products) {
+      if (existing.has(p.id)) continue;
+      const names = (p.material_type ?? '')
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean);
+      names.forEach((name, idx) => {
+        insert.run(p.id, name, p.price_per_lf_cents, idx, now);
+      });
+    }
+    db.prepare(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('product_materials_migrated', '1')"
+    ).run();
+  })();
+}
+
+/** Fetch all product materials grouped by product_id. */
+export function getMaterialsByProductId(
+  db: Database.Database
+): Map<number, ProductMaterialRow[]> {
+  const rows = db
+    .prepare('SELECT * FROM product_materials ORDER BY product_id ASC, sort_order ASC, id ASC')
+    .all() as ProductMaterialRow[];
+  const map = new Map<number, ProductMaterialRow[]>();
+  for (const row of rows) {
+    const list = map.get(row.product_id);
+    if (list) {
+      list.push(row);
+    } else {
+      map.set(row.product_id, [row]);
+    }
+  }
+  return map;
+}
+
+/** Attach a nested `materials` array to product rows (empty array when none defined). */
+export function attachMaterials<T extends { id: number }>(
+  db: Database.Database,
+  products: T[]
+): Array<T & { materials: ProductMaterialRow[] }> {
+  const byProduct = getMaterialsByProductId(db);
+  return products.map((p) => ({ ...p, materials: byProduct.get(p.id) ?? [] }));
 }
 
 async function createProfileThumbnail(filename: string, svgMarkup: string): Promise<string> {

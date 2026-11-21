@@ -142,26 +142,29 @@ export function validateAndBuildQuoteLines(
       throw new ValidationError('One or more selected colors are unavailable or deleted.');
     }
 
-    // Material type: comma-separated list on the product; selection must be one of them.
-    // Required when the product defines material types, optional otherwise (legacy products).
-    const availableMaterials = (product.material_type ?? '')
-      .split(',')
-      .map((m) => m.trim())
-      .filter(Boolean);
+    // Material type: comes from the product's product_materials rows (each with its own
+    // price per linear ft). The selection must match one of them and is required when the
+    // product defines materials. Legacy products without material rows fall back to the
+    // product-level price and ignore any stale selection.
+    const productMaterials = db
+      .prepare('SELECT * FROM product_materials WHERE product_id = ? ORDER BY sort_order ASC, id ASC')
+      .all(product.id) as Array<{ name: string; price_per_lf_cents: number }>;
     const rawMaterialType =
       typeof item.material_type === 'string' ? item.material_type.trim().slice(0, 200) : '';
     let materialType: string | null = rawMaterialType || null;
-    if (availableMaterials.length > 0) {
+    let basePriceCents = product.price_per_lf_cents;
+    if (productMaterials.length > 0) {
       if (!materialType) {
         throw new ValidationError(`Every quote line for "${product.name}" must have a Material Type selected.`);
       }
-      if (!availableMaterials.includes(materialType)) {
+      const match = productMaterials.find((m) => m.name === materialType);
+      if (!match) {
         throw new ValidationError(
           `Material Type "${materialType}" is not defined for product "${product.name}".`
         );
       }
+      basePriceCents = match.price_per_lf_cents;
     } else if (materialType) {
-      // Product has no materials defined — ignore any stale selection.
       materialType = null;
     }
 
@@ -185,7 +188,8 @@ export function validateAndBuildQuoteLines(
     const gauge =
       typeof item.gauge === 'string' && item.gauge.trim() ? item.gauge.trim().slice(0, 20) : null;
 
-    const combinedCents = product.price_per_lf_cents + color.price_per_lf_cents;
+    // Base price is the selected material type's price (or the product price as fallback).
+    const combinedCents = basePriceCents + color.price_per_lf_cents;
     const lineTotalCents = Math.round(lf * combinedCents) + additionalCostsCents;
     totalCents += lineTotalCents;
 
@@ -200,7 +204,7 @@ export function validateAndBuildQuoteLines(
       length_ft: lengthFt,
       color_name: color.name,
       color_hex: color.hex_code,
-      product_price_per_lf_cents: product.price_per_lf_cents,
+      product_price_per_lf_cents: basePriceCents,
       color_price_per_lf_cents: color.price_per_lf_cents,
       combined_price_per_lf_cents: combinedCents,
       linear_feet: lf,

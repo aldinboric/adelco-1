@@ -15,7 +15,7 @@ import { hexToArgb, normalizeHexDisplay } from '../shared/hex.ts';
 import {
   type IssuedQuoteRow,
   type MetalColorRow,
-  type MetalProductRow,
+  type MetalProductWithMaterials,
   resolveSafeImagePath,
 } from './db.ts';
 
@@ -94,6 +94,48 @@ function formatMeasureDimensions(
   const l = lengthFt && lengthFt > 0 ? `${fmt(lengthFt)}'` : null;
   if (w && l) return `${w} x ${l}`;
   return w || l;
+}
+
+/** Compact "36\" · 26 Ga · 10'" style label for a material's saved measures. */
+function formatMaterialMeasures(m: {
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+}): string | null {
+  const parts = [formatGaugeLabel(m.gauge), formatMeasureDimensions(m.width_in, m.length_ft)].filter(
+    Boolean
+  );
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** Material names for a product (falls back to the legacy comma-separated column). */
+function productMaterialNames(p: MetalProductWithMaterials): string[] {
+  if (p.materials.length > 0) return p.materials.map((m) => m.name);
+  return (p.material_type ?? '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
+/** Per-material measures lines, e.g. "Aluminum: 36\" · 26 Ga · 10'". */
+function productMeasuresText(p: MetalProductWithMaterials): string {
+  if (p.materials.length === 0) return '—';
+  const lines = p.materials.map((m) => {
+    const measures = formatMaterialMeasures(m);
+    return measures ? `${m.name}: ${measures}` : m.name;
+  });
+  return lines.join('\n');
+}
+
+/** Per-material price lines, e.g. "Aluminum: $5.10"; falls back to the product price. */
+function productPriceText(p: MetalProductWithMaterials): string {
+  if (p.materials.length === 0) return formatCAD(p.price_per_lf_cents);
+  return p.materials.map((m) => `${m.name}: ${formatCAD(m.price_per_lf_cents)}`).join('\n');
+}
+
+function productMaterialTypeText(p: MetalProductWithMaterials): string {
+  const names = productMaterialNames(p);
+  return names.length > 0 ? names.join(', ') : '—';
 }
 
 function pdfToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
@@ -602,7 +644,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
 // 2. METAL PRODUCTS EXPORTS
 // ============================================================================
 
-export async function buildProductsExcel(products: MetalProductRow[]): Promise<Buffer> {
+export async function buildProductsExcel(products: MetalProductWithMaterials[]): Promise<Buffer> {
   const wb = Workbook.create();
   wb.creator = 'AdelCo Inc.';
   const ws = Workbook.addWorksheet(wb, 'Products');
@@ -611,8 +653,9 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
   Column.setDefinitions(ws, [
     { key: 'id', width: 10 },
     { key: 'image', width: 14 },
-    { key: 'name', width: 38 },
-    { key: 'material', width: 22 },
+    { key: 'name', width: 34 },
+    { key: 'material', width: 20 },
+    { key: 'measures', width: 24 },
     { key: 'price', width: 22 },
     { key: 'status', width: 16 },
   ]);
@@ -622,11 +665,11 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     wb,
     logoBuf,
     'Products Catalog',
-    `Exported ${new Date().toISOString().slice(0, 10)} · Base product price in CAD per linear foot`,
-    6
+    `Exported ${new Date().toISOString().slice(0, 10)} · Prices in CAD per linear foot (per material type when defined)`,
+    7
   );
 
-  const headers = ['ID', 'Product', 'Name', 'Material Type', 'Price per linear ft', 'Status'];
+  const headers = ['ID', 'Product', 'Name', 'Material Type', 'Measures', 'Price per linear ft', 'Status'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
     const col = idx + 1;
@@ -634,7 +677,7 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     Cell.setStyle(ws, { row: headerRowIdx, col }, {
       font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 5 ? 'right' : 'left' },
+      alignment: { vertical: 'middle', horizontal: col === 6 ? 'right' : 'left' },
       border: {
         top: { style: 'thin', color: { argb: 'FF084091' } },
         bottom: { style: 'thin', color: { argb: 'FF084091' } },
@@ -647,14 +690,16 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
   for (let idx = 0; idx < products.length; idx++) {
     const p = products[idx];
     const rowIdx = headerRowIdx + 1 + idx;
-    Row.setHeight(ws, rowIdx, 42);
+    const hasMaterials = p.materials.length > 0;
+    Row.setHeight(ws, rowIdx, hasMaterials ? Math.max(42, 16 * p.materials.length) : 42);
 
     const values = [
       p.id,
       '',
       sanitizeExcelText(p.name),
-      sanitizeExcelText(p.material_type?.trim() || '—'),
-      p.price_per_lf_cents / 100,
+      sanitizeExcelText(productMaterialTypeText(p)),
+      productMeasuresText(p),
+      hasMaterials ? productPriceText(p) : p.price_per_lf_cents / 100,
       p.is_available ? 'Available' : 'Unavailable',
     ];
     const rowBg = idx % 2 === 1 ? 'FFF7F7F7' : 'FFFFFFFF';
@@ -676,10 +721,10 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
         },
         alignment: {
           vertical: 'middle',
-          horizontal: col === 5 ? 'right' : 'left',
-          wrapText: col === 3 || col === 4,
+          horizontal: col === 6 ? 'right' : 'left',
+          wrapText: col === 3 || col === 4 || col === 5 || col === 6,
         },
-        ...(col === 5 ? { numFmt: '$#,##0.00' } : {}),
+        ...(col === 6 && !hasMaterials ? { numFmt: '$#,##0.00' } : {}),
       });
     });
 
@@ -697,7 +742,7 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
   return Buffer.from(out);
 }
 
-export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buffer> {
+export async function buildProductsPdf(products: MetalProductWithMaterials[]): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
   let y = await drawPdfBrandHeader(
     doc,
@@ -717,7 +762,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     {
       label: 'Product',
       align: 'left',
-      minW: 100,
+      minW: 90,
       padX: 54, // thumbnail + gap
       headerFontSize: 9.5,
       cells: products.map((p) => ({ text: p.name, fontSize: 9.5 })),
@@ -725,10 +770,18 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     {
       label: 'Material Type',
       align: 'left',
+      minW: 60,
+      padX: 12,
+      headerFontSize: 9.5,
+      cells: products.map((p) => ({ text: productMaterialTypeText(p), fontSize: 8.5 })),
+    },
+    {
+      label: 'Measures',
+      align: 'left',
       minW: 70,
       padX: 12,
       headerFontSize: 9.5,
-      cells: products.map((p) => ({ text: p.material_type?.trim() || '—', fontSize: 9.5 })),
+      cells: products.map((p) => ({ text: productMeasuresText(p), fontSize: 8 })),
     },
     {
       label: 'Price / lf',
@@ -736,7 +789,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       minW: 70,
       padX: 12,
       headerFontSize: 9.5,
-      cells: products.map((p) => ({ text: formatCAD(p.price_per_lf_cents), fontSize: 9.5 })),
+      cells: products.map((p) => ({ text: productPriceText(p), fontSize: 8.5 })),
     },
     {
       label: 'Status',
@@ -793,13 +846,18 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, item.material_type?.trim() || '—', cols[2].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, productMaterialTypeText(item), cols[2].x + 6, y, rowH, {
       width: cols[2].w - 12,
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[3].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, productMeasuresText(item), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
+      height: rowH - 8,
+      ellipsis: true,
+    });
+    drawPdfCenteredText(doc, productPriceText(item), cols[4].x + 6, y, rowH, {
+      width: cols[4].w - 12,
       align: 'right',
       height: rowH - 8,
       ellipsis: true,
@@ -808,10 +866,10 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     drawPdfCenteredText(
       doc,
       item.is_available ? 'Available' : 'Unavailable',
-      cols[4].x + 6,
+      cols[5].x + 6,
       y,
       rowH,
-      { width: cols[4].w - 12, height: rowH - 8, ellipsis: true }
+      { width: cols[5].w - 12, height: rowH - 8, ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);

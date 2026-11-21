@@ -91,15 +91,12 @@ export function CustomerQuoteView({
     const product = item.product_id ? productById.get(item.product_id) ?? null : null;
     const color = item.color_id ? colorById.get(item.color_id) ?? null : null;
 
-    const productMaterials = product
-      ? (product.material_type ?? '')
-          .split(',')
-          .map((m) => m.trim())
-          .filter(Boolean)
-      : [];
+    const productMaterials = product?.materials ?? [];
     const hasMaterialIssue = Boolean(
       product && productMaterials.length > 0 && !item.material_type.trim()
     );
+    const selectedMaterial =
+      productMaterials.find((m) => m.name === item.material_type.trim()) ?? null;
 
     const productAvailable = Boolean(product && product.is_available === 1);
     const colorAvailable = Boolean(color && color.is_available === 1);
@@ -107,12 +104,18 @@ export function CustomerQuoteView({
     const hasProductIssue = Boolean(item.productIssue) || (item.product_id !== null && !productAvailable);
     const hasColorIssue = Boolean(item.colorIssue) || (item.color_id !== null && !colorAvailable);
 
-    const productPriceCents = product ? product.price_per_lf_cents : null;
+    // Base price: the selected material type's own price per lf; products without
+    // material types fall back to the product-level price (legacy behavior).
+    const basePriceCents = selectedMaterial
+      ? selectedMaterial.price_per_lf_cents
+      : productMaterials.length === 0 && product
+        ? product.price_per_lf_cents
+        : null;
     const colorPriceCents = color ? color.price_per_lf_cents : null;
 
     const combinedPriceCents =
-      productAvailable && colorAvailable && productPriceCents !== null && colorPriceCents !== null
-        ? productPriceCents + colorPriceCents
+      productAvailable && colorAvailable && basePriceCents !== null && colorPriceCents !== null
+        ? basePriceCents + colorPriceCents
         : null;
 
     const parsedLf = Number(item.linear_feet_input);
@@ -134,6 +137,8 @@ export function CustomerQuoteView({
       product,
       color,
       productMaterials,
+      selectedMaterial,
+      basePriceCents,
       hasMaterialIssue,
       productAvailable,
       colorAvailable,
@@ -493,11 +498,20 @@ export function CustomerQuoteView({
                               }`}
                             >
                               <option value="">-- Select product --</option>
-                              {availableProducts.map((p, pIdx) => (
-                                <option key={p.id} value={p.id}>
-                                  #{pIdx + 1} · {p.name} ({formatCAD(p.price_per_lf_cents)}/lf)
-                                </option>
-                              ))}
+                              {availableProducts.map((p, pIdx) => {
+                                const mats = p.materials ?? [];
+                                const priceLabel =
+                                  mats.length > 0
+                                    ? `${mats.length} material${mats.length === 1 ? '' : 's'} · from ${formatCAD(
+                                        Math.min(...mats.map((m) => m.price_per_lf_cents))
+                                      )}/lf`
+                                    : `${formatCAD(p.price_per_lf_cents)}/lf`;
+                                return (
+                                  <option key={p.id} value={p.id}>
+                                    #{pIdx + 1} · {p.name} ({priceLabel})
+                                  </option>
+                                );
+                              })}
                             </select>
 
                             {row.hasProductIssue && (
@@ -517,7 +531,7 @@ export function CustomerQuoteView({
                                   {product.name}
                                 </span>
                                 <span className="font-mono text-[11px] text-slate-500">
-                                  ({formatCAD(product.price_per_lf_cents)})
+                                  ({row.basePriceCents !== null ? formatCAD(row.basePriceCents) : formatCAD(product.price_per_lf_cents)}/lf)
                                 </span>
                               </div>
                             )}
@@ -541,8 +555,8 @@ export function CustomerQuoteView({
                               >
                                 <option value="">-- Select material type --</option>
                                 {productMaterials.map((m) => (
-                                  <option key={m} value={m}>
-                                    {m}
+                                  <option key={m.id} value={m.name}>
+                                    {m.name} ({formatCAD(m.price_per_lf_cents)}/lf)
                                   </option>
                                 ))}
                               </select>
@@ -623,32 +637,51 @@ export function CustomerQuoteView({
                           )}
                         </td>
 
-                        {/* Step 2b: Measures — Width (in), Gauge (ga), Length (ft) */}
+                        {/* Step 2b: Measures — Width (in), Gauge (ga), Length (ft).
+                            Datalists offer the saved measures of the selected material type;
+                            custom values are allowed and apply only to this quote. */}
                         <td className="px-4 py-3 align-top text-left">
                           {showColorStage ? (
                             <div className="flex flex-wrap items-center gap-1.5">
+                              <datalist id={`dl-width-${item.rowKey}`}>
+                                {row.selectedMaterial?.width_in != null && (
+                                  <option value={row.selectedMaterial.width_in} />
+                                )}
+                              </datalist>
+                              <datalist id={`dl-gauge-${item.rowKey}`}>
+                                {row.selectedMaterial?.gauge && (
+                                  <option value={row.selectedMaterial.gauge} />
+                                )}
+                              </datalist>
+                              <datalist id={`dl-length-${item.rowKey}`}>
+                                {row.selectedMaterial?.length_ft != null && (
+                                  <option value={row.selectedMaterial.length_ft} />
+                                )}
+                              </datalist>
                               <input
                                 type="number"
                                 step="0.01"
                                 min="0"
+                                list={`dl-width-${item.rowKey}`}
                                 value={item.width_input}
                                 onChange={(e) =>
                                   updateRow(item.rowKey, { width_input: e.target.value })
                                 }
                                 placeholder='Width (in)'
-                                title="Width (in)"
+                                title="Width (in) — saved value available for the selected material type"
                                 aria-label="Width (in)"
                                 className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                               />
                               <input
                                 type="text"
                                 maxLength={20}
+                                list={`dl-gauge-${item.rowKey}`}
                                 value={item.gauge_input}
                                 onChange={(e) =>
                                   updateRow(item.rowKey, { gauge_input: e.target.value })
                                 }
                                 placeholder="Gauge (ga)"
-                                title="Gauge (ga)"
+                                title="Gauge (ga) — saved value available for the selected material type"
                                 aria-label="Gauge (ga)"
                                 className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                               />
@@ -656,12 +689,13 @@ export function CustomerQuoteView({
                                 type="number"
                                 step="0.01"
                                 min="0"
+                                list={`dl-length-${item.rowKey}`}
                                 value={item.length_input}
                                 onChange={(e) =>
                                   updateRow(item.rowKey, { length_input: e.target.value })
                                 }
                                 placeholder="Length (ft)"
-                                title="Length (ft)"
+                                title="Length (ft) — saved value available for the selected material type"
                                 aria-label="Length (ft)"
                                 className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                               />

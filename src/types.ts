@@ -27,6 +27,18 @@ export interface MetalColor {
   created_at: string;
 }
 
+export interface ProductMaterial {
+  id: number;
+  product_id: number;
+  name: string;
+  price_per_lf_cents: number;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface MetalProduct {
   id: number;
   name: string;
@@ -36,6 +48,7 @@ export interface MetalProduct {
   is_available: number;
   sort_order: number;
   created_at: string;
+  materials: ProductMaterial[];
 }
 
 export interface QuoteDraftItem {

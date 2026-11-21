@@ -4,6 +4,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { requireAnyPermission, requireAuth, requirePermission } from '../auth.ts';
 import {
+  attachMaterials,
   ensureDataDirs,
   getDb,
   type MetalColorRow,
@@ -100,6 +101,105 @@ function applyReorder(
     order.forEach((id, idx) => stmt.run(idx, id));
   })();
   return { ok: true, order };
+}
+
+const MAX_MATERIALS_PER_PRODUCT = 50;
+const MAX_MEASURE = 1_000_000;
+
+interface ParsedMaterialInput {
+  name: string;
+  priceCents: number;
+  widthIn: number | null;
+  gauge: string | null;
+  lengthFt: number | null;
+}
+
+// Materials arrive as a JSON string inside the multipart form (or as an array
+// for JSON clients). Each entry: { name, price_per_lf_cents, width_in?, gauge?, length_ft? }.
+function parseMaterialsInput(
+  raw: unknown
+): { ok: true; materials: ParsedMaterialInput[] } | { ok: false; error: string } {
+  if (raw === undefined || raw === null || raw === '') {
+    return { ok: true, materials: [] };
+  }
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ok: false, error: 'materials must be a valid JSON array.' };
+    }
+  }
+  if (!Array.isArray(parsed)) {
+    return { ok: false, error: 'materials must be an array.' };
+  }
+  if (parsed.length > MAX_MATERIALS_PER_PRODUCT) {
+    return { ok: false, error: `A product can have at most ${MAX_MATERIALS_PER_PRODUCT} material types.` };
+  }
+  const materials: ParsedMaterialInput[] = [];
+  const seen = new Set<string>();
+  for (const entry of parsed) {
+    const m = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
+    const name = typeof m.name === 'string' ? m.name.trim().slice(0, 100) : '';
+    if (!name) {
+      return { ok: false, error: 'Every material type needs a name.' };
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      return { ok: false, error: `Duplicate material type "${name}".` };
+    }
+    seen.add(key);
+    const priceCents = parseCents(m.price_per_lf_cents);
+    if (priceCents === null) {
+      return {
+        ok: false,
+        error: `Material type "${name}" needs a valid non-negative price per linear ft.`,
+      };
+    }
+    let widthIn: number | null = null;
+    if (m.width_in !== undefined && m.width_in !== null && m.width_in !== '') {
+      const w = Number(m.width_in);
+      if (!Number.isFinite(w) || w <= 0 || w > MAX_MEASURE) {
+        return { ok: false, error: `Width (in) for "${name}" must be a positive number.` };
+      }
+      widthIn = w;
+    }
+    let lengthFt: number | null = null;
+    if (m.length_ft !== undefined && m.length_ft !== null && m.length_ft !== '') {
+      const l = Number(m.length_ft);
+      if (!Number.isFinite(l) || l <= 0 || l > MAX_MEASURE) {
+        return { ok: false, error: `Length (ft) for "${name}" must be a positive number.` };
+      }
+      lengthFt = l;
+    }
+    const gauge =
+      typeof m.gauge === 'string' && m.gauge.trim() ? m.gauge.trim().slice(0, 20) : null;
+    materials.push({ name, priceCents, widthIn, gauge, lengthFt });
+  }
+  return { ok: true, materials };
+}
+
+// Transactionally replace a product's material rows and keep the legacy
+// comma-joined material_type column in sync for older readers/exports.
+function replaceProductMaterials(
+  db: import('better-sqlite3').Database,
+  productId: number,
+  materials: ParsedMaterialInput[]
+): void {
+  const now = new Date().toISOString();
+  const del = db.prepare('DELETE FROM product_materials WHERE product_id = ?');
+  const ins = db.prepare(`
+    INSERT INTO product_materials (product_id, name, price_per_lf_cents, width_in, gauge, length_ft, sort_order, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const sync = db.prepare('UPDATE metal_products SET material_type = ? WHERE id = ?');
+  db.transaction(() => {
+    del.run(productId);
+    materials.forEach((m, idx) => {
+      ins.run(productId, m.name, m.priceCents, m.widthIn, m.gauge, m.lengthFt, idx, now);
+    });
+    sync.run(materials.length > 0 ? materials.map((m) => m.name).join(', ') : null, productId);
+  })();
 }
 
 export function createCatalogRouter(): Router {
@@ -301,7 +401,7 @@ export function createCatalogRouter(): Router {
     (_req: Request, res: Response) => {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      res.json(rows);
+      res.json(attachMaterials(db, rows));
     }
   );
 
@@ -329,6 +429,11 @@ export function createCatalogRouter(): Router {
           res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
           return;
         }
+        const materialsResult = parseMaterialsInput(req.body?.materials);
+        if (!materialsResult.ok) {
+          res.status(400).json({ error: materialsResult.error });
+          return;
+        }
 
         let imagePath: string | null = null;
         if (req.file) {
@@ -344,8 +449,20 @@ export function createCatalogRouter(): Router {
           .prepare(
             'INSERT INTO metal_products (name, image_path, material_type, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)'
           )
-          .run(name, imagePath, materialType || null, priceCents, maxSort.m + 1, now);
-        res.status(201).json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(info.lastInsertRowid));
+          .run(
+            name,
+            imagePath,
+            materialsResult.materials.length > 0
+              ? materialsResult.materials.map((m) => m.name).join(', ')
+              : materialType || null,
+            priceCents,
+            maxSort.m + 1,
+            now
+          );
+        const productId = Number(info.lastInsertRowid);
+        replaceProductMaterials(db, productId, materialsResult.materials);
+        const created = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(productId) as MetalProductRow;
+        res.status(201).json(attachMaterials(db, [created])[0]);
       } catch (err) {
         // Log the real error server-side; never leak internal details (paths, stack) to the client.
         console.error('Failed to create product:', err);
@@ -384,6 +501,11 @@ export function createCatalogRouter(): Router {
           res.status(400).json({ error: 'Only valid PNG, JPEG, WebP or GIF images are allowed.' });
           return;
         }
+        const materialsResult = parseMaterialsInput(req.body?.materials);
+        if (!materialsResult.ok) {
+          res.status(400).json({ error: materialsResult.error });
+          return;
+        }
 
         const db = getDb();
         const existing = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id) as
@@ -403,13 +525,23 @@ export function createCatalogRouter(): Router {
 
         db.prepare(
           'UPDATE metal_products SET name = ?, image_path = ?, material_type = ?, price_per_lf_cents = ? WHERE id = ?'
-        ).run(name, nextImagePath, materialType || null, priceCents, id);
+        ).run(
+          name,
+          nextImagePath,
+          materialsResult.materials.length > 0
+            ? materialsResult.materials.map((m) => m.name).join(', ')
+            : materialType || null,
+          priceCents,
+          id
+        );
+        replaceProductMaterials(db, id, materialsResult.materials);
 
         if ((req.file || removeImage) && existing.image_path && existing.image_path !== nextImagePath) {
           removeImageFileIfUnused(existing.image_path);
         }
 
-        res.json(db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id));
+        const updated = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id) as MetalProductRow;
+        res.json(attachMaterials(db, [updated])[0]);
       } catch (err) {
         console.error('Failed to update product:', err);
         res.status(400).json({ error: 'Failed to update product. Please check the uploaded image and try again.' });
@@ -479,7 +611,7 @@ export function createCatalogRouter(): Router {
     async (_req: Request, res: Response) => {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      const buf = await buildProductsExcel(rows);
+      const buf = await buildProductsExcel(attachMaterials(db, rows));
       sendBufferDownload(res, EXCEL_MIME, 'AdelCo-Products.xlsx', buf);
     }
   );
@@ -491,7 +623,7 @@ export function createCatalogRouter(): Router {
     async (_req: Request, res: Response) => {
       const db = getDb();
       const rows = db.prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC').all() as MetalProductRow[];
-      const buf = await buildProductsPdf(rows);
+      const buf = await buildProductsPdf(attachMaterials(db, rows));
       sendBufferDownload(res, 'application/pdf', 'AdelCo-Products.pdf', buf);
     }
   );

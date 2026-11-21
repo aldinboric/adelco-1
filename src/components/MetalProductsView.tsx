@@ -33,6 +33,39 @@ interface MetalProductsViewProps {
   onNotify: (type: 'success' | 'error', text: string) => void;
 }
 
+// One editable material-type row inside the Add/Edit Product modal.
+interface MaterialRowDraft {
+  key: string;
+  name: string;
+  price: string;
+  width: string;
+  gauge: string;
+  length: string;
+}
+
+function newMaterialRow(pricePrefill = ''): MaterialRowDraft {
+  return {
+    key: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    price: pricePrefill,
+    width: '',
+    gauge: '',
+    length: '',
+  };
+}
+
+// Compact "36″ · 26 ga · 10 ft" label for a material's saved measures.
+function materialMeasuresLabel(m: { width_in: number | null; gauge: string | null; length_ft: number | null }): string | null {
+  const parts: string[] = [];
+  if (m.width_in != null && m.width_in > 0) parts.push(`${m.width_in}"`);
+  if (m.gauge?.trim()) {
+    const g = m.gauge.trim();
+    parts.push(/^\d+(\.\d+)?$/.test(g) ? `${g} ga` : g);
+  }
+  if (m.length_ft != null && m.length_ft > 0) parts.push(`${m.length_ft}'`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 export function MetalProductsView({
   products,
   loading,
@@ -45,7 +78,7 @@ export function MetalProductsView({
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<MetalProduct | null>(null);
   const [nameInput, setNameInput] = useState('');
-  const [materialInput, setMaterialInput] = useState('');
+  const [materialRows, setMaterialRows] = useState<MaterialRowDraft[]>([]);
   const [priceInput, setPriceInput] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -80,7 +113,7 @@ export function MetalProductsView({
   const openAddModal = () => {
     setEditingProduct(null);
     setNameInput('');
-    setMaterialInput('');
+    setMaterialRows([newMaterialRow()]);
     setPriceInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
@@ -93,8 +126,32 @@ export function MetalProductsView({
     setAddModalOpen(false);
     setEditingProduct(product);
     setNameInput(product.name);
-    setMaterialInput(product.material_type ?? '');
-    setPriceInput(centsToDollarsInput(product.price_per_lf_cents));
+    const productPrice = centsToDollarsInput(product.price_per_lf_cents);
+    const mats = product.materials ?? [];
+    const rows: MaterialRowDraft[] =
+      mats.length > 0
+        ? mats.map((m) => ({
+            key: `mat-${m.id}`,
+            name: m.name,
+            price: centsToDollarsInput(m.price_per_lf_cents),
+            width: m.width_in != null ? String(m.width_in) : '',
+            gauge: m.gauge ?? '',
+            length: m.length_ft != null ? String(m.length_ft) : '',
+          }))
+        : (product.material_type ?? '')
+            .split(',')
+            .map((m) => m.trim())
+            .filter(Boolean)
+            .map((name, i) => ({
+              key: `legacy-${i}`,
+              name,
+              price: productPrice,
+              width: '',
+              gauge: '',
+              length: '',
+            }));
+    setMaterialRows(rows.length > 0 ? rows : [newMaterialRow(productPrice)]);
+    setPriceInput(productPrice);
     setImageFile(null);
     setImagePreviewUrl(getImageUrl(product.image_path));
     setRemoveImage(false);
@@ -105,7 +162,7 @@ export function MetalProductsView({
     setAddModalOpen(false);
     setEditingProduct(null);
     setNameInput('');
-    setMaterialInput('');
+    setMaterialRows([]);
     setPriceInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
@@ -124,6 +181,18 @@ export function MetalProductsView({
     setImagePreviewUrl(URL.createObjectURL(file));
   };
 
+  const updateMaterialRow = (key: string, patch: Partial<MaterialRowDraft>) => {
+    setMaterialRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const addMaterialRow = () => {
+    setMaterialRows((prev) => [...prev, newMaterialRow(priceInput.trim())]);
+  };
+
+  const removeMaterialRow = (key: string) => {
+    setMaterialRows((prev) => prev.filter((r) => r.key !== key));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -136,16 +205,71 @@ export function MetalProductsView({
       return;
     }
     if (cents === null) {
-      setFormError('Please enter a valid price per linear foot.');
+      setFormError('Please enter a valid base price per linear foot.');
       return;
+    }
+
+    // Validate material rows: name + price required, measures optional but must be valid.
+    const materialsPayload: Array<{
+      name: string;
+      price_per_lf_cents: number;
+      width_in: number | null;
+      gauge: string | null;
+      length_ft: number | null;
+    }> = [];
+    const seenNames = new Set<string>();
+    for (const row of materialRows) {
+      const name = row.name.trim();
+      if (!name && !row.price.trim() && !row.width.trim() && !row.gauge.trim() && !row.length.trim()) {
+        continue; // skip completely empty rows
+      }
+      if (!name) {
+        setFormError('Every material type needs a name (or remove the empty row).');
+        return;
+      }
+      if (seenNames.has(name.toLowerCase())) {
+        setFormError(`Duplicate material type "${name}".`);
+        return;
+      }
+      seenNames.add(name.toLowerCase());
+      const priceCents = dollarsInputToCents(row.price);
+      if (priceCents === null) {
+        setFormError(`Material type "${name}" needs a valid price per linear ft.`);
+        return;
+      }
+      let widthIn: number | null = null;
+      if (row.width.trim()) {
+        const w = Number(row.width.trim());
+        if (!Number.isFinite(w) || w <= 0) {
+          setFormError(`Width (in) for "${name}" must be a positive number.`);
+          return;
+        }
+        widthIn = w;
+      }
+      let lengthFt: number | null = null;
+      if (row.length.trim()) {
+        const l = Number(row.length.trim());
+        if (!Number.isFinite(l) || l <= 0) {
+          setFormError(`Length (ft) for "${name}" must be a positive number.`);
+          return;
+        }
+        lengthFt = l;
+      }
+      materialsPayload.push({
+        name,
+        price_per_lf_cents: priceCents,
+        width_in: widthIn,
+        gauge: row.gauge.trim() ? row.gauge.trim().slice(0, 20) : null,
+        length_ft: lengthFt,
+      });
     }
 
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append('name', trimmedName);
-      formData.append('material_type', materialInput.trim());
       formData.append('price_per_lf_cents', String(cents));
+      formData.append('materials', JSON.stringify(materialsPayload));
       if (imageFile) {
         formData.append('image', imageFile);
       }
@@ -218,7 +342,7 @@ export function MetalProductsView({
           <span aria-hidden="true">·</span>
           <span>{availableCount} available for new quotes</span>
           <span aria-hidden="true">·</span>
-          <span>Base product prices in CAD / linear ft</span>
+          <span>Prices in CAD / linear ft (per material type when defined)</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -304,8 +428,9 @@ export function MetalProductsView({
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">#</th>
                   <th className="px-4 py-3 text-left">Product</th>
-                  <th className="px-4 py-3 w-48 text-left">Material Type</th>
-                  <th className="px-4 py-3 w-44 text-right">Price per linear ft</th>
+                  <th className="px-4 py-3 w-44 text-left">Material Type</th>
+                  <th className="px-4 py-3 w-52 text-left">Measures</th>
+                  <th className="px-4 py-3 w-48 text-right">Price per linear ft</th>
                   <th className="px-4 py-3 w-28 text-left">Status</th>
                   {canManage && <th className="px-4 py-3 w-52 text-right">Actions</th>}
                 </tr>
@@ -378,13 +503,18 @@ export function MetalProductsView({
                           unavailable ? 'text-slate-400' : 'text-slate-700'
                         }`}
                       >
-                        {product.material_type?.trim() ? (
-                          <span className="inline-flex flex-wrap gap-1">
-                            {product.material_type
-                              .split(',')
-                              .map((m) => m.trim())
-                              .filter(Boolean)
-                              .map((m) => (
+                        {(() => {
+                          const mats = product.materials ?? [];
+                          const names =
+                            mats.length > 0
+                              ? mats.map((m) => m.name)
+                              : (product.material_type ?? '')
+                                  .split(',')
+                                  .map((m) => m.trim())
+                                  .filter(Boolean);
+                          return names.length > 0 ? (
+                            <span className="inline-flex flex-wrap gap-1">
+                              {names.map((m) => (
                                 <span
                                   key={m}
                                   className="inline-flex items-center rounded-full border border-[#084091]/20 bg-[#084091]/5 px-2 py-0.5 text-[11px] font-medium text-[#084091]"
@@ -392,13 +522,60 @@ export function MetalProductsView({
                                   {m}
                                 </span>
                               ))}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          );
+                        })()}
                       </td>
-                      <td className="px-4 py-2 text-right font-mono text-xs font-medium tabular-nums text-slate-900">
-                        {formatCAD(product.price_per_lf_cents)}
+                      <td
+                        className={`px-4 py-2 text-left text-[11px] leading-relaxed ${
+                          unavailable ? 'text-slate-400' : 'text-slate-600'
+                        }`}
+                      >
+                        {(() => {
+                          const mats = product.materials ?? [];
+                          if (mats.length === 0) {
+                            return <span className="text-slate-300">—</span>;
+                          }
+                          const lines = mats.map((m) => {
+                            const label = materialMeasuresLabel(m);
+                            return label ? `${m.name}: ${label}` : null;
+                          });
+                          const any = lines.filter(Boolean);
+                          return any.length > 0 ? (
+                            <span className="block space-y-0.5">
+                              {lines.map((line, i) => (
+                                <span key={mats[i].id} className="block">
+                                  {line ?? mats[i].name}
+                                </span>
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td
+                        className={`px-4 py-2 text-right font-mono text-xs font-medium tabular-nums ${
+                          unavailable ? 'text-slate-400' : 'text-slate-900'
+                        }`}
+                      >
+                        {(() => {
+                          const mats = product.materials ?? [];
+                          if (mats.length === 0) {
+                            return formatCAD(product.price_per_lf_cents);
+                          }
+                          return (
+                            <span className="block space-y-0.5">
+                              {mats.map((m) => (
+                                <span key={m.id} className="block">
+                                  {m.name}: {formatCAD(m.price_per_lf_cents)}
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2 text-left text-xs font-medium">
                         {unavailable ? (
@@ -456,15 +633,15 @@ export function MetalProductsView({
         )}
       </div>
 
-      {/* Add / Edit Product Modal */}
+      {/* Add / Edit Product Modal — centered, compact width, scrollable body */}
       {isModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="text-base font-semibold text-slate-900">
                 {editingProduct
                   ? `Edit Product #${orderedProducts.findIndex((p) => p.id === editingProduct.id) + 1}`
@@ -479,7 +656,8 @@ export function MetalProductsView({
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4 px-5 py-4">
+            <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
               {formError && (
                 <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
                   {formError}
@@ -502,26 +680,115 @@ export function MetalProductsView({
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Material Type <span className="font-normal text-slate-400">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={200}
-                  value={materialInput}
-                  onChange={(e) => setMaterialInput(e.target.value)}
-                  placeholder="e.g. Steel, Aluminum, Copper"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
-                />
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Material Types <span className="font-normal text-slate-400">(optional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addMaterialRow}
+                    className="inline-flex shrink-0 items-center gap-1 rounded border border-[#084091] bg-white px-2 py-1 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add material
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {materialRows.map((row, idx) => (
+                    <div
+                      key={row.key}
+                      className="rounded-md border border-slate-200 bg-[#f7f7f7] p-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          maxLength={100}
+                          value={row.name}
+                          onChange={(e) => updateMaterialRow(row.key, { name: e.target.value })}
+                          placeholder={`Material #${idx + 1} — e.g. Aluminum`}
+                          aria-label={`Material type name #${idx + 1}`}
+                          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                        />
+                        <div className="relative w-28 shrink-0">
+                          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={row.price}
+                            onChange={(e) => updateMaterialRow(row.key, { price: e.target.value })}
+                            placeholder="0.00"
+                            title="Price per linear ft for this material (CAD)"
+                            aria-label={`Price per linear ft for material #${idx + 1}`}
+                            className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeMaterialRow(row.key)}
+                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          title="Remove material type"
+                          aria-label={`Remove material type #${idx + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={row.width}
+                          onChange={(e) => updateMaterialRow(row.key, { width: e.target.value })}
+                          placeholder='Width (in)'
+                          title="Width (in) — optional"
+                          aria-label={`Width (in) for material #${idx + 1}`}
+                          className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          maxLength={20}
+                          value={row.gauge}
+                          onChange={(e) => updateMaterialRow(row.key, { gauge: e.target.value })}
+                          placeholder="Gauge (ga)"
+                          title="Gauge — optional"
+                          aria-label={`Gauge for material #${idx + 1}`}
+                          className="w-[80px] rounded-md border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={row.length}
+                          onChange={(e) => updateMaterialRow(row.key, { length: e.target.value })}
+                          placeholder="Length (ft)"
+                          title="Length (ft) — optional"
+                          aria-label={`Length (ft) for material #${idx + 1}`}
+                          className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                        />
+                        <span className="text-[10px] text-slate-400">/lf price above · measures optional</span>
+                      </div>
+                    </div>
+                  ))}
+                  {materialRows.length === 0 && (
+                    <p className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500">
+                      No material types — the base price below is used for every quote line of this product.
+                    </p>
+                  )}
+                </div>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Separate multiple material types with commas. These appear as choices in the
-                  Customer Quote when this product is selected.
+                  Each material type has its own price per linear ft and optional measures. They appear
+                  as choices (with prices) in the Customer Quote when this product is selected.
                 </p>
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Price per linear ft (CAD)
+                  Base Price per linear ft (CAD){' '}
+                  <span className="font-normal text-slate-400">(fallback when no material types)</span>
                 </label>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-slate-400">
@@ -588,7 +855,9 @@ export function MetalProductsView({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+              </div>
+
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
                 <button
                   type="button"
                   onClick={closeModal}

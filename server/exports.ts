@@ -1339,12 +1339,6 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     },
   ]);
 
-  // Additional Notes column (index 6) is exactly 10pt narrower; the width goes
-  // to the Total Price column so the table still spans the full page width.
-  cols[6].w -= 10;
-  cols[7].x -= 10;
-  cols[7].w += 10;
-
   const drawHeader = (topY: number) =>
     drawPdfTableHeader(doc, topY, 28, cols, { fontSize: 8, padX: 4, lineGap: 1 });
 

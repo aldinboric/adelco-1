@@ -63,7 +63,6 @@ export function CustomerQuoteView({
       linear_feet_input: '',
       additional_costs_input: '',
       additional_costs_description: '',
-      note_input: '',
     };
     onChangeDraft({
       ...draft,
@@ -171,7 +170,6 @@ export function CustomerQuoteView({
     linear_feet: number;
     additional_costs_cents: number;
     additional_costs_description: string | null;
-    note: string | null;
   }> | null => {
     if (draft.items.length === 0) {
       setValidationError('Add at least one product before issuing or exporting.');
@@ -188,7 +186,6 @@ export function CustomerQuoteView({
       linear_feet: number;
       additional_costs_cents: number;
       additional_costs_description: string | null;
-      note: string | null;
     }> = [];
     for (let i = 0; i < computedRows.length; i++) {
       const r = computedRows[i];
@@ -236,7 +233,6 @@ export function CustomerQuoteView({
         linear_feet: r.validLf,
         additional_costs_cents: r.validAddCostsCents,
         additional_costs_description: r.item.additional_costs_description.trim() || null,
-        note: r.item.note_input.trim() ? r.item.note_input.trim().slice(0, 500) : null,
       });
     }
     return payloadItems;
@@ -455,11 +451,8 @@ export function CustomerQuoteView({
                         <th className="px-4 py-3 w-40 text-right">Total / lf (with Color)</th>
                         <th className="px-4 py-3 w-36 text-right">Linear Feet</th>
                         <th className="px-4 py-3 w-48 text-right">Additional Costs</th>
+                        <th className="px-4 py-3 w-36 text-right">Total Price</th>
                       </>
-                    )}
-                    <th className="px-4 py-3 w-52 text-left">Additional Notes</th>
-                    {anyRowHasColorSelected && (
-                      <th className="px-4 py-3 w-36 text-right">Total Price</th>
                     )}
                     <th className="px-4 py-3 w-14 text-right" aria-label="Remove row" />
                   </tr>
@@ -712,7 +705,7 @@ export function CustomerQuoteView({
                           )}
                         </td>
 
-                        {/* Step 3: Combined / lf, Linear Feet input, Additional Costs */}
+                        {/* Step 3: Combined / lf, Linear Feet input, Additional Costs, Line Total */}
                         {anyRowHasColorSelected && (
                           <>
                             <td className="px-4 py-3 align-top text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
@@ -783,27 +776,7 @@ export function CustomerQuoteView({
                                 <span className="block text-xs text-slate-300">—</span>
                               )}
                             </td>
-                          </>
-                        )}
 
-                        {/* Step 3b: Additional Notes — per-line note, printed as-is (empty stays empty) */}
-                        <td className="px-4 py-3 align-top text-left">
-                          <textarea
-                            rows={2}
-                            maxLength={500}
-                            value={item.note_input}
-                            onChange={(e) =>
-                              updateRow(item.rowKey, { note_input: e.target.value })
-                            }
-                            placeholder="Note (optional)"
-                            aria-label="Additional note"
-                            className="mx-auto block w-[90%] resize-y rounded-md border border-slate-300 bg-white px-2 py-1.5 text-left text-xs leading-snug text-slate-800 [text-align:justify] placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                          />
-                        </td>
-
-                        {/* Step 3c: Line Total */}
-                        {anyRowHasColorSelected && (
-                          <>
                             <td className="px-4 py-3 align-top text-right font-mono text-sm font-semibold tabular-nums text-[#2a6f3b]">
                               {showPricingAndLfStage && row.lineTotalCents > 0 ? (
                                 <div>{formatCAD(row.lineTotalCents)}</div>
@@ -835,7 +808,7 @@ export function CustomerQuoteView({
                 {/* Bottom Action + Grand Total Row */}
                 <tfoot>
                   <tr className="divide-x divide-slate-200 border-t-2 border-slate-200 bg-[#f7f7f7]">
-                    <td colSpan={anyRowHasColorSelected ? 8 : 6} className="px-4 py-3.5 text-left">
+                    <td colSpan={anyRowHasColorSelected ? 7 : 5} className="px-4 py-3.5 text-left">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <button
                           type="button"

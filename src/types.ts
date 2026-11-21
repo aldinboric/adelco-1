@@ -62,7 +62,6 @@ export interface QuoteDraftItem {
   linear_feet_input: string;
   additional_costs_input: string;
   additional_costs_description: string;
-  note_input: string;
   productIssue?: 'unavailable' | 'deleted' | null;
   colorIssue?: 'unavailable' | 'deleted' | null;
   fallbackProductName?: string;
@@ -106,7 +105,6 @@ export interface IssuedQuoteItem {
   linear_feet: number;
   additional_costs_cents: number;
   additional_costs_description: string | null;
-  note: string | null;
   line_total_cents: number;
 }
 

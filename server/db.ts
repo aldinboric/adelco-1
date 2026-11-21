@@ -75,7 +75,6 @@ export interface IssuedQuoteItemRow {
   linear_feet: number;
   additional_costs_cents: number;
   additional_costs_description: string | null;
-  note: string | null;
   line_total_cents: number;
 }
 
@@ -251,7 +250,6 @@ function initSchema(db: Database.Database): void {
 
   ensureColumn(db, 'issued_quote_items', 'additional_costs_cents', 'additional_costs_cents INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'issued_quote_items', 'additional_costs_description', 'additional_costs_description TEXT');
-  ensureColumn(db, 'issued_quote_items', 'note', 'note TEXT');
   ensureColumn(db, 'issued_quote_items', 'material_type', 'material_type TEXT');
   ensureColumn(db, 'issued_quote_items', 'width_in', 'width_in REAL');
   ensureColumn(db, 'issued_quote_items', 'gauge', 'gauge TEXT');

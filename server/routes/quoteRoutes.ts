@@ -202,8 +202,8 @@ export function createQuoteRouter(): Router {
               product_name, product_image_path, material_type, width_in, gauge, length_ft,
               color_name, color_hex,
               product_price_per_lf_cents, color_price_per_lf_cents, combined_price_per_lf_cents,
-              linear_feet, additional_costs_cents, additional_costs_description, note, line_total_cents
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              linear_feet, additional_costs_cents, additional_costs_description, line_total_cents
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           for (const item of validatedItems) {
@@ -226,7 +226,6 @@ export function createQuoteRouter(): Router {
               item.linear_feet,
               item.additional_costs_cents,
               item.additional_costs_description,
-              item.note,
               item.line_total_cents
             );
           }
@@ -293,7 +292,6 @@ export function createQuoteRouter(): Router {
           linear_feet: old.linear_feet,
           additional_costs_cents: old.additional_costs_cents ?? 0,
           additional_costs_description: old.additional_costs_description ?? '',
-          note: old.note ?? '',
           productIssue: productOk ? null : prod ? 'unavailable' : 'deleted',
           colorIssue: colorOk ? null : color ? 'unavailable' : 'deleted',
           fallbackProductName: old.product_name,

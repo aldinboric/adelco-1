@@ -72,6 +72,7 @@ export interface QuoteDraftItem {
 
 export interface QuoteDraftState {
   customer_name: string;
+  seller_name: string;
   quote_date: string;
   items: QuoteDraftItem[];
   copiedFromQuoteNumber?: string | null;
@@ -96,6 +97,7 @@ export interface IssuedQuote {
   quote_number: string;
   quote_date: string;
   customer_name: string | null;
+  seller_name: string | null;
   total_cents: number;
   created_by: string | null;
   created_at: string;

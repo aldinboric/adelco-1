@@ -51,6 +51,7 @@ export interface IssuedQuoteRow {
   quote_number: string;
   quote_date: string;
   customer_name: string | null;
+  seller_name: string | null;
   total_cents: number;
   created_by: string | null;
   created_at: string;
@@ -167,6 +168,7 @@ function initSchema(db: Database.Database): void {
       quote_number TEXT UNIQUE NOT NULL,
       quote_date TEXT NOT NULL,
       customer_name TEXT,
+      seller_name TEXT,
       total_cents INTEGER NOT NULL CHECK (total_cents >= 0),
       created_by TEXT,
       created_at TEXT NOT NULL
@@ -249,6 +251,7 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_product_materials_product ON product_materials(product_id);
   `);
 
+  ensureColumn(db, 'issued_quotes', 'seller_name', 'seller_name TEXT');
   ensureColumn(db, 'issued_quote_items', 'additional_costs_cents', 'additional_costs_cents INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'issued_quote_items', 'additional_costs_description', 'additional_costs_description TEXT');
   ensureColumn(db, 'issued_quote_items', 'note', 'note TEXT');

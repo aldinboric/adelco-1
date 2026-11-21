@@ -55,6 +55,7 @@ import { centsToDollarsInput, todayIsoDate } from './utils/format';
 function createEmptyDraft(): QuoteDraftState {
   return {
     customer_name: '',
+    seller_name: '',
     quote_date: todayIsoDate(),
     items: [],
     copiedFromQuoteNumber: null,
@@ -68,6 +69,7 @@ function hasPermission(user: AuthUser | null, key: PermissionKey): boolean {
 
 interface CopyQuoteApiResponse {
   customer_name: string;
+  seller_name: string;
   quote_date: string;
   source_quote_number: string;
   items: Array<{
@@ -328,6 +330,7 @@ export default function App() {
 
       setDraft({
         customer_name: data.customer_name,
+        seller_name: data.seller_name,
         quote_date: data.quote_date,
         items: mappedItems,
         copiedFromQuoteNumber: data.source_quote_number,

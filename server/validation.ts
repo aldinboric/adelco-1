@@ -63,6 +63,12 @@ export function parseOptionalCustomerName(raw: unknown): string | null {
   return trimmed ? trimmed.slice(0, 120) : null;
 }
 
+export function parseOptionalSellerName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed.slice(0, 120) : null;
+}
+
 export interface ValidatedQuoteLine {
   source_product_id: number;
   source_color_id: number;

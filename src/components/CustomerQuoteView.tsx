@@ -234,6 +234,7 @@ export function CustomerQuoteView({
         body: JSON.stringify({
           quote_date: draft.quote_date,
           customer_name: draft.customer_name.trim() || null,
+          seller_name: draft.seller_name.trim() || null,
           items,
         }),
       });
@@ -265,6 +266,7 @@ export function CustomerQuoteView({
         body: JSON.stringify({
           quote_date: draft.quote_date,
           customer_name: draft.customer_name.trim() || null,
+          seller_name: draft.seller_name.trim() || null,
           items,
         }),
       });
@@ -290,7 +292,7 @@ export function CustomerQuoteView({
       {/* Quote Header Metadata Bar */}
       <div className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:max-w-xl">
+          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 lg:max-w-2xl">
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                 Customer Name <span className="font-normal text-slate-400">(optional)</span>
@@ -300,6 +302,20 @@ export function CustomerQuoteView({
                 maxLength={120}
                 value={draft.customer_name}
                 onChange={(e) => onChangeDraft({ ...draft, customer_name: e.target.value })}
+                placeholder="First & Last Name"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Seller Name <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                maxLength={120}
+                value={draft.seller_name}
+                onChange={(e) => onChangeDraft({ ...draft, seller_name: e.target.value })}
                 placeholder="First & Last Name"
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
               />

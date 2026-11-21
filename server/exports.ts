@@ -140,13 +140,19 @@ async function drawPdfBrandHeader(
     .font('Helvetica')
     .fontSize(8)
     .fillColor(TEXT_DARK)
-    .text('Phone (WhatsApp): +1 (604) 902 9604', textX, startY + 32);
+    .text('Phone (Office): +1 (604) 676 2155', textX, startY + 32);
 
   doc
     .font('Helvetica')
     .fontSize(8)
     .fillColor(TEXT_DARK)
-    .text('Email: adel@adelcohomeservices.com', textX, startY + 43);
+    .text('Phone (WhatSapp): +1 (604) 369 9634', textX, startY + 41);
+
+  doc
+    .font('Helvetica')
+    .fontSize(8)
+    .fillColor(TEXT_DARK)
+    .text('Email: adel@adelcohomeservices.com', textX, startY + 50);
 
   doc
     .font('Helvetica-Bold')
@@ -163,7 +169,7 @@ async function drawPdfBrandHeader(
       width: doc.page.width - 80,
     });
 
-  const lineY = startY + 62;
+  const lineY = startY + 70;
   doc
     .moveTo(40, lineY)
     .lineTo(doc.page.width - 40, lineY)
@@ -484,7 +490,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
   let y = await drawPdfBrandHeader(
     doc,
     'Colors Catalog',
-    'Home Services'
+    'WorkSafeBC: 201 255 418'
   );
 
   const cols = fitPdfColumns(doc, doc.page.width - 80, [
@@ -702,7 +708,7 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
   let y = await drawPdfBrandHeader(
     doc,
     'Products Catalog',
-    'Home Services'
+    'WorkSafeBC: 201 255 418'
   );
 
   const cols = fitPdfColumns(doc, doc.page.width - 80, [
@@ -1147,7 +1153,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   let y = await drawPdfBrandHeader(
     doc,
     'Customer Quote',
-    'Home Services'
+    'WorkSafeBC: 201 255 418'
   );
 
   // Customer & Quote metadata card
@@ -1650,7 +1656,7 @@ export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Bu
   let y = await drawPdfBrandHeader(
     doc,
     'Issued Quotes Register',
-    'Home Services'
+    'WorkSafeBC: 201 255 418'
   );
 
   const cols = fitPdfColumns(doc, doc.page.width - 80, [

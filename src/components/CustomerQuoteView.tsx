@@ -457,7 +457,7 @@ export function CustomerQuoteView({
                         <th className="px-4 py-3 w-48 text-right">Additional Costs</th>
                       </>
                     )}
-                    <th className="px-4 py-3 w-52 text-left">Additional Notes</th>
+                    <th className="px-4 py-3 w-48 text-left">Notes</th>
                     {anyRowHasColorSelected && (
                       <th className="px-4 py-3 w-36 text-right">Total Price</th>
                     )}
@@ -786,7 +786,7 @@ export function CustomerQuoteView({
                           </>
                         )}
 
-                        {/* Step 3b: Additional Notes — per-line note, printed as-is (empty stays empty) */}
+                        {/* Step 3b: Notes — per-line note, printed as-is (empty stays empty) */}
                         <td className="px-4 py-3 align-top text-left">
                           <textarea
                             rows={2}

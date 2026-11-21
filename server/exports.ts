@@ -1323,9 +1323,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       }),
     },
     {
-      label: 'Additional\nNotes',
+      label: 'Notes',
       align: 'left',
-      minW: 60,
+      minW: 50,
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,
@@ -1530,7 +1530,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       });
     }
 
-    // Col 6: Additional Notes — justified, occupying 90% of the column width
+    // Col 6: Notes — justified, occupying 90% of the column width
     // (padded 5% from each edge); empty note prints as an empty cell.
     const noteText = item.note?.trim() ?? '';
     if (noteText) {

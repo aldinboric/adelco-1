@@ -385,15 +385,11 @@ function fitPdfColumns(
   usableW: number,
   specs: PdfFitColumnSpec[]
 ): PdfColumn[] {
-  // Floor = max(minW, header width): a column never shrinks below the width its
-  // own header label needs, so headers keep their explicit line count (max 2)
-  // even when long cell text pressures the layout.
-  const headerWidths = specs.map((s) => {
+  const minWidths = specs.map((s) => s.minW);
+  const widths = specs.map((s) => {
     const headerPad = s.headerPadX ?? s.padX;
-    return measurePdfTextWidth(doc, s.label, true, s.headerFontSize) + headerPad;
-  });
-  const minWidths = specs.map((s, i) => Math.max(s.minW, headerWidths[i]));
-  const widths = specs.map((s, i) => {
+    const headerW =
+      measurePdfTextWidth(doc, s.label, true, s.headerFontSize) + headerPad;
     const contentW = s.cells.reduce(
       (m, c) =>
         Math.max(
@@ -402,7 +398,7 @@ function fitPdfColumns(
         ),
       0
     );
-    return Math.max(minWidths[i], contentW);
+    return Math.max(s.minW, headerW, contentW);
   });
 
   let sum = widths.reduce((a, b) => a + b, 0);
@@ -1305,10 +1301,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       cells: quote.items.flatMap((it) => {
         const desc = it.additional_costs_description?.trim();
         return [
-          // Measure only a capped prefix of long descriptions — the full text is
-          // wrapped inside the cell at render time and must not inflate the column
-          // (which would squeeze other columns and wrap their headers to 3 lines).
-          ...(desc ? [{ text: desc.slice(0, 24), fontSize: 7 }] : []),
+          ...(desc ? [{ text: desc, fontSize: 7 }] : []),
           { text: formatCAD(it.additional_costs_cents ?? 0), fontSize: 8.5 },
         ];
       }),

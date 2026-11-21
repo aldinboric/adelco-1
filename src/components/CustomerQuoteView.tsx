@@ -844,7 +844,7 @@ export function CustomerQuoteView({
                     {anyRowHasColorSelected && (
                       <>
                         <td className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wide text-slate-600">
-                          Grand Total (CAD)
+                          Grand Total
                         </td>
                         <td className="px-4 py-3.5 text-right font-mono text-base font-bold tabular-nums text-[#2a6f3b]">
                           {formatCAD(grandTotalCents)}

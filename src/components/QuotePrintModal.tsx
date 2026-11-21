@@ -222,7 +222,7 @@ export function QuotePrintModal({
             </p>
             <div className="flex items-center gap-5 rounded-md bg-[#2a6f3b] px-5 py-3 text-white">
               <span className="text-xs font-semibold uppercase tracking-wide">
-                Grand Total (CAD)
+                Grand Total
               </span>
               <span className="font-mono text-lg font-bold tabular-nums">
                 {formatCAD(quote.total_cents)}

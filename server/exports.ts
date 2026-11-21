@@ -1263,7 +1263,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     });
   }
 
-  Cell.setValue(ws, { row: totalRowIdx, col: totalCols - 1 }, 'GRAND TOTAL (CAD):');
+  Cell.setValue(ws, { row: totalRowIdx, col: totalCols - 1 }, 'GRAND TOTAL:');
   Cell.setFont(ws, { row: totalRowIdx, col: totalCols - 1 }, {
     name: 'Calibri',
     size: 11,
@@ -1694,7 +1694,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   );
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, 'GRAND TOTAL (CAD)', cols[5].x + 4, y, footerH, {
+  drawPdfCenteredText(doc, 'GRAND TOTAL', cols[5].x + 4, y, footerH, {
     width: cols[5].w - 8,
     align: 'right',
   });

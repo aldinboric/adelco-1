@@ -149,12 +149,6 @@ async function drawPdfBrandHeader(
     .text('Phone (WhatSapp): +1 (604) 369 9634', textX, startY + 41);
 
   doc
-    .font('Helvetica')
-    .fontSize(8)
-    .fillColor(TEXT_DARK)
-    .text('Email: adel@adelcohomeservices.com', textX, startY + 50);
-
-  doc
     .font('Helvetica-Bold')
     .fontSize(14)
     .fillColor(TEXT_DARK)
@@ -169,7 +163,7 @@ async function drawPdfBrandHeader(
       width: doc.page.width - 80,
     });
 
-  const lineY = startY + 70;
+  const lineY = startY + 62;
   doc
     .moveTo(40, lineY)
     .lineTo(doc.page.width - 40, lineY)

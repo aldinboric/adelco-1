@@ -30,28 +30,6 @@ export interface MetalProductRow {
   is_available: number;
   sort_order: number;
   created_at: string;
-  materials?: ProductMaterialRow[];
-}
-
-export interface ProductMaterialMeasureRow {
-  id: number;
-  material_id: number;
-  width_in: number | null;
-  gauge: string | null;
-  length_ft: number | null;
-  /** NULL = fall back to the material's price per lf. */
-  price_per_lf_cents: number | null;
-  created_at: string;
-}
-
-export interface ProductMaterialRow {
-  id: number;
-  product_id: number;
-  name: string;
-  price_per_lf_cents: number;
-  sort_order: number;
-  created_at: string;
-  measures?: ProductMaterialMeasureRow[];
 }
 
 export interface IssuedQuoteRow {
@@ -69,8 +47,6 @@ export interface IssuedQuoteItemRow {
   quote_id: number;
   source_product_id: number | null;
   source_color_id: number | null;
-  source_material_id: number | null;
-  measure_id: number | null;
   product_name: string;
   product_image_path: string | null;
   material_type: string | null;
@@ -80,8 +56,6 @@ export interface IssuedQuoteItemRow {
   color_name: string;
   color_hex: string;
   product_price_per_lf_cents: number;
-  /** Effective material/measure price per lf actually used for this line (snapshot). */
-  material_price_per_lf_cents: number | null;
   color_price_per_lf_cents: number;
   combined_price_per_lf_cents: number;
   linear_feet: number;
@@ -240,34 +214,10 @@ function initSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS product_materials (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      price_per_lf_cents INTEGER NOT NULL DEFAULT 0 CHECK (price_per_lf_cents >= 0),
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (product_id) REFERENCES metal_products(id) ON DELETE CASCADE,
-      UNIQUE (product_id, name)
-    );
-
-    CREATE TABLE IF NOT EXISTS product_material_measures (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      material_id INTEGER NOT NULL,
-      width_in REAL,
-      gauge TEXT,
-      length_ft REAL,
-      price_per_lf_cents INTEGER CHECK (price_per_lf_cents IS NULL OR price_per_lf_cents >= 0),
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (material_id) REFERENCES product_materials(id) ON DELETE CASCADE
-    );
-
     CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON issued_quote_items(quote_id);
     CREATE INDEX IF NOT EXISTS idx_issued_quotes_date ON issued_quotes(quote_date);
-    CREATE INDEX IF NOT EXISTS idx_product_materials_product ON product_materials(product_id);
-    CREATE INDEX IF NOT EXISTS idx_material_measures_material ON product_material_measures(material_id);
   `);
 
   ensureColumn(db, 'issued_quote_items', 'additional_costs_cents', 'additional_costs_cents INTEGER NOT NULL DEFAULT 0');
@@ -276,11 +226,6 @@ function initSchema(db: Database.Database): void {
   ensureColumn(db, 'issued_quote_items', 'width_in', 'width_in REAL');
   ensureColumn(db, 'issued_quote_items', 'gauge', 'gauge TEXT');
   ensureColumn(db, 'issued_quote_items', 'length_ft', 'length_ft REAL');
-  // NOTE: no FK from issued_quote_items to product_materials — issued quotes are
-  // snapshots and must survive catalog edits/deletes.
-  ensureColumn(db, 'issued_quote_items', 'source_material_id', 'source_material_id INTEGER');
-  ensureColumn(db, 'issued_quote_items', 'measure_id', 'measure_id INTEGER');
-  ensureColumn(db, 'issued_quote_items', 'material_price_per_lf_cents', 'material_price_per_lf_cents INTEGER');
 
   // sort_order migrations for drag & drop reordering (backfill preserves id order)
   ensureColumn(db, 'metal_colors', 'sort_order', 'sort_order INTEGER NOT NULL DEFAULT 0', () => {
@@ -294,90 +239,6 @@ function initSchema(db: Database.Database): void {
       'UPDATE metal_products SET sort_order = (SELECT COUNT(*) FROM metal_products AS p2 WHERE p2.id < metal_products.id);'
     );
   });
-
-  // One-time backfill: legacy comma-separated material_type strings become
-  // product_materials rows (each inheriting the product's base price per lf).
-  const legacyProducts = db
-    .prepare(
-      `SELECT p.id, p.material_type, p.price_per_lf_cents FROM metal_products p
-       WHERE p.material_type IS NOT NULL AND TRIM(p.material_type) <> ''
-         AND NOT EXISTS (SELECT 1 FROM product_materials m WHERE m.product_id = p.id)`
-    )
-    .all() as Array<{ id: number; material_type: string; price_per_lf_cents: number }>;
-  if (legacyProducts.length > 0) {
-    const insertMaterial = db.prepare(`
-      INSERT INTO product_materials (product_id, name, price_per_lf_cents, sort_order, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    const now = new Date().toISOString();
-    db.transaction(() => {
-      for (const p of legacyProducts) {
-        p.material_type
-          .split(',')
-          .map((m) => m.trim())
-          .filter(Boolean)
-          .forEach((name, idx) => {
-            insertMaterial.run(p.id, name, p.price_per_lf_cents, idx, now);
-          });
-      }
-    })();
-  }
-}
-
-/** Products with nested materials (+ their measures), ordered like the products table. */
-export function listProductsWithMaterials(db: Database.Database): MetalProductRow[] {
-  const products = db
-    .prepare('SELECT * FROM metal_products ORDER BY sort_order ASC, id ASC')
-    .all() as MetalProductRow[];
-  const materials = db
-    .prepare('SELECT * FROM product_materials ORDER BY product_id ASC, sort_order ASC, id ASC')
-    .all() as ProductMaterialRow[];
-  const measures = db
-    .prepare('SELECT * FROM product_material_measures ORDER BY material_id ASC, id ASC')
-    .all() as ProductMaterialMeasureRow[];
-  const measuresByMaterial = new Map<number, ProductMaterialMeasureRow[]>();
-  for (const m of measures) {
-    const list = measuresByMaterial.get(m.material_id) ?? [];
-    list.push(m);
-    measuresByMaterial.set(m.material_id, list);
-  }
-  const materialsByProduct = new Map<number, ProductMaterialRow[]>();
-  for (const m of materials) {
-    const list = materialsByProduct.get(m.product_id) ?? [];
-    list.push({ ...m, measures: measuresByMaterial.get(m.id) ?? [] });
-    materialsByProduct.set(m.product_id, list);
-  }
-  return products.map((p) => ({ ...p, materials: materialsByProduct.get(p.id) ?? [] }));
-}
-
-export function getProductWithMaterials(
-  db: Database.Database,
-  id: number
-): MetalProductRow | undefined {
-  const product = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(id) as
-    | MetalProductRow
-    | undefined;
-  if (!product) return undefined;
-  const materials = db
-    .prepare('SELECT * FROM product_materials WHERE product_id = ? ORDER BY sort_order ASC, id ASC')
-    .all(id) as ProductMaterialRow[];
-  const measures = db
-    .prepare(
-      `SELECT mm.* FROM product_material_measures mm
-       JOIN product_materials pm ON pm.id = mm.material_id
-       WHERE pm.product_id = ? ORDER BY mm.material_id ASC, mm.id ASC`
-    )
-    .all(id) as ProductMaterialMeasureRow[];
-  const measuresByMaterial = new Map<number, ProductMaterialMeasureRow[]>();
-  for (const m of measures) {
-    const list = measuresByMaterial.get(m.material_id) ?? [];
-    list.push(m);
-    measuresByMaterial.set(m.material_id, list);
-  }
-  return {
-    ...product,
-    materials: materials.map((m) => ({ ...m, measures: measuresByMaterial.get(m.id) ?? [] })),
-  };
 }
 
 async function createProfileThumbnail(filename: string, svgMarkup: string): Promise<string> {

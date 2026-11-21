@@ -96,22 +96,6 @@ function formatMeasureDimensions(
   return w || l;
 }
 
-function formatProductMeasuresSummary(p: MetalProductRow): string {
-  const mats = p.materials ?? [];
-  const parts: string[] = [];
-  for (const m of mats) {
-    for (const ms of m.measures ?? []) {
-      const dims = formatMeasureDimensions(ms.width_in, ms.length_ft);
-      const g = formatGaugeLabel(ms.gauge);
-      const label = [dims, g].filter(Boolean).join(' · ') || 'Unnamed measure';
-      parts.push(
-        `${m.name}: ${label}${ms.price_per_lf_cents != null ? ` (${formatCAD(ms.price_per_lf_cents)}/lf)` : ''}`
-      );
-    }
-  }
-  return parts.length > 0 ? parts.join('; ') : '—';
-}
-
 function pdfToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -629,7 +613,6 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     { key: 'image', width: 14 },
     { key: 'name', width: 38 },
     { key: 'material', width: 22 },
-    { key: 'measures', width: 34 },
     { key: 'price', width: 22 },
     { key: 'status', width: 16 },
   ]);
@@ -640,10 +623,10 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     logoBuf,
     'Products Catalog',
     `Exported ${new Date().toISOString().slice(0, 10)} · Base product price in CAD per linear foot`,
-    7
+    6
   );
 
-  const headers = ['ID', 'Product', 'Name', 'Material Type', 'Measures', 'Price per linear ft', 'Status'];
+  const headers = ['ID', 'Product', 'Name', 'Material Type', 'Price per linear ft', 'Status'];
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
     const col = idx + 1;
@@ -651,7 +634,7 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
     Cell.setStyle(ws, { row: headerRowIdx, col }, {
       font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF084091' } },
-      alignment: { vertical: 'middle', horizontal: col === 6 ? 'right' : 'left' },
+      alignment: { vertical: 'middle', horizontal: col === 5 ? 'right' : 'left' },
       border: {
         top: { style: 'thin', color: { argb: 'FF084091' } },
         bottom: { style: 'thin', color: { argb: 'FF084091' } },
@@ -671,7 +654,6 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
       '',
       sanitizeExcelText(p.name),
       sanitizeExcelText(p.material_type?.trim() || '—'),
-      sanitizeExcelText(formatProductMeasuresSummary(p)),
       p.price_per_lf_cents / 100,
       p.is_available ? 'Available' : 'Unavailable',
     ];
@@ -694,10 +676,10 @@ export async function buildProductsExcel(products: MetalProductRow[]): Promise<B
         },
         alignment: {
           vertical: 'middle',
-          horizontal: col === 6 ? 'right' : 'left',
-          wrapText: col === 3 || col === 4 || col === 5,
+          horizontal: col === 5 ? 'right' : 'left',
+          wrapText: col === 3 || col === 4,
         },
-        ...(col === 6 ? { numFmt: '$#,##0.00' } : {}),
+        ...(col === 5 ? { numFmt: '$#,##0.00' } : {}),
       });
     });
 
@@ -747,14 +729,6 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       padX: 12,
       headerFontSize: 9.5,
       cells: products.map((p) => ({ text: p.material_type?.trim() || '—', fontSize: 9.5 })),
-    },
-    {
-      label: 'Measures',
-      align: 'left',
-      minW: 90,
-      padX: 12,
-      headerFontSize: 9.5,
-      cells: products.map((p) => ({ text: formatProductMeasuresSummary(p), fontSize: 8.5 })),
     },
     {
       label: 'Price / lf',
@@ -824,13 +798,8 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, formatProductMeasuresSummary(item), cols[3].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
-      height: rowH - 8,
-      ellipsis: true,
-    });
-    drawPdfCenteredText(doc, formatCAD(item.price_per_lf_cents), cols[4].x + 6, y, rowH, {
-      width: cols[4].w - 12,
       align: 'right',
       height: rowH - 8,
       ellipsis: true,
@@ -839,10 +808,10 @@ export async function buildProductsPdf(products: MetalProductRow[]): Promise<Buf
     drawPdfCenteredText(
       doc,
       item.is_available ? 'Available' : 'Unavailable',
-      cols[5].x + 6,
+      cols[4].x + 6,
       y,
       rowH,
-      { width: cols[5].w - 12, height: rowH - 8, ellipsis: true }
+      { width: cols[4].w - 12, height: rowH - 8, ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);

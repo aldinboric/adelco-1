@@ -73,6 +73,8 @@ interface CopyQuoteApiResponse {
   source_quote_number: string;
   items: Array<{
     product_id: number | null;
+    material_id: number | null;
+    measure_id: number | null;
     material_type: string;
     color_id: number | null;
     width_in: number | null;
@@ -309,6 +311,8 @@ export default function App() {
       const mappedItems: QuoteDraftItem[] = data.items.map((item, idx) => ({
         rowKey: `copied-${Date.now()}-${idx}`,
         product_id: item.product_id,
+        material_id: item.material_id ?? null,
+        measure_id: item.measure_id ?? null,
         material_type: item.material_type ?? '',
         color_id: item.color_id,
         width_input: item.width_in != null ? String(item.width_in) : '',

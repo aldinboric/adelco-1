@@ -198,12 +198,12 @@ export function createQuoteRouter(): Router {
           const quoteId = Number(quoteInfo.lastInsertRowid);
           const insertItem = db.prepare(`
             INSERT INTO issued_quote_items (
-              quote_id, source_product_id, source_color_id,
+              quote_id, source_product_id, source_color_id, source_material_id, measure_id,
               product_name, product_image_path, material_type, width_in, gauge, length_ft,
               color_name, color_hex,
-              product_price_per_lf_cents, color_price_per_lf_cents, combined_price_per_lf_cents,
+              product_price_per_lf_cents, material_price_per_lf_cents, color_price_per_lf_cents, combined_price_per_lf_cents,
               linear_feet, additional_costs_cents, additional_costs_description, line_total_cents
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           for (const item of validatedItems) {
@@ -212,6 +212,8 @@ export function createQuoteRouter(): Router {
               quoteId,
               item.source_product_id,
               item.source_color_id,
+              item.source_material_id,
+              item.measure_id,
               item.product_name,
               snapshotImagePath,
               item.material_type,
@@ -221,6 +223,7 @@ export function createQuoteRouter(): Router {
               item.color_name,
               item.color_hex,
               item.product_price_per_lf_cents,
+              item.material_price_per_lf_cents,
               item.color_price_per_lf_cents,
               item.combined_price_per_lf_cents,
               item.linear_feet,
@@ -284,6 +287,8 @@ export function createQuoteRouter(): Router {
 
         return {
           product_id: productOk && prod ? prod.id : null,
+          material_id: old.source_material_id ?? null,
+          measure_id: old.measure_id ?? null,
           material_type: old.material_type ?? '',
           color_id: colorOk && color ? color.id : null,
           width_in: old.width_in ?? null,

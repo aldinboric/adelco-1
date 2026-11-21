@@ -55,6 +55,8 @@ export function CustomerQuoteView({
     const nextItem: QuoteDraftItem = {
       rowKey: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       product_id: null,
+      material_id: null,
+      measure_id: null,
       material_type: '',
       color_id: null,
       width_input: '',
@@ -91,14 +93,25 @@ export function CustomerQuoteView({
     const product = item.product_id ? productById.get(item.product_id) ?? null : null;
     const color = item.color_id ? colorById.get(item.color_id) ?? null : null;
 
-    const productMaterials = product
+    const productMaterialRows = product?.materials ?? [];
+    const legacyMaterials = product
       ? (product.material_type ?? '')
           .split(',')
           .map((m) => m.trim())
           .filter(Boolean)
       : [];
+    const hasStructuredMaterials = productMaterialRows.length > 0;
+    const selectedMaterial = hasStructuredMaterials
+      ? (productMaterialRows.find((m) => m.id === item.material_id) ?? null)
+      : null;
+    const selectedMeasure =
+      selectedMaterial?.measures.find((m) => m.id === item.measure_id) ?? null;
+    const materialMeasures = selectedMaterial?.measures ?? [];
+
     const hasMaterialIssue = Boolean(
-      product && productMaterials.length > 0 && !item.material_type.trim()
+      product &&
+        ((hasStructuredMaterials && !selectedMaterial) ||
+          (!hasStructuredMaterials && legacyMaterials.length > 0 && !item.material_type.trim()))
     );
 
     const productAvailable = Boolean(product && product.is_available === 1);
@@ -107,12 +120,17 @@ export function CustomerQuoteView({
     const hasProductIssue = Boolean(item.productIssue) || (item.product_id !== null && !productAvailable);
     const hasColorIssue = Boolean(item.colorIssue) || (item.color_id !== null && !colorAvailable);
 
-    const productPriceCents = product ? product.price_per_lf_cents : null;
+    // Effective per-lf price: measure override ?? material price ?? product base price
+    const effectivePriceCents = product
+      ? (selectedMeasure?.price_per_lf_cents ??
+        selectedMaterial?.price_per_lf_cents ??
+        product.price_per_lf_cents)
+      : null;
     const colorPriceCents = color ? color.price_per_lf_cents : null;
 
     const combinedPriceCents =
-      productAvailable && colorAvailable && productPriceCents !== null && colorPriceCents !== null
-        ? productPriceCents + colorPriceCents
+      productAvailable && colorAvailable && effectivePriceCents !== null && colorPriceCents !== null
+        ? effectivePriceCents + colorPriceCents
         : null;
 
     const parsedLf = Number(item.linear_feet_input);
@@ -133,12 +151,18 @@ export function CustomerQuoteView({
       item,
       product,
       color,
-      productMaterials,
+      productMaterialRows,
+      legacyMaterials,
+      hasStructuredMaterials,
+      selectedMaterial,
+      selectedMeasure,
+      materialMeasures,
       hasMaterialIssue,
       productAvailable,
       colorAvailable,
       hasProductIssue,
       hasColorIssue,
+      effectivePriceCents,
       combinedPriceCents,
       validLf,
       hasInvalidAddCosts,
@@ -157,6 +181,8 @@ export function CustomerQuoteView({
 
   const validateBeforeSubmit = (): Array<{
     product_id: number;
+    material_id: number | null;
+    measure_id: number | null;
     material_type: string | null;
     color_id: number;
     width_in: number | null;
@@ -173,6 +199,8 @@ export function CustomerQuoteView({
 
     const payloadItems: Array<{
       product_id: number;
+      material_id: number | null;
+      measure_id: number | null;
       material_type: string | null;
       color_id: number;
       width_in: number | null;
@@ -220,7 +248,9 @@ export function CustomerQuoteView({
       }
       payloadItems.push({
         product_id: r.item.product_id,
-        material_type: r.item.material_type.trim() || null,
+        material_id: r.selectedMaterial?.id ?? null,
+        measure_id: r.item.measure_id ?? null,
+        material_type: (r.selectedMaterial?.name ?? r.item.material_type.trim()) || null,
         color_id: r.item.color_id,
         width_in: widthRaw !== '' ? widthNum : null,
         gauge: r.item.gauge_input.trim() || null,
@@ -454,7 +484,18 @@ export function CustomerQuoteView({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {computedRows.map((row, idx) => {
-                    const { item, product, color, productMaterials, productAvailable, colorAvailable } = row;
+                    const {
+                      item,
+                      product,
+                      color,
+                      productMaterialRows,
+                      legacyMaterials,
+                      hasStructuredMaterials,
+                      selectedMaterial,
+                      materialMeasures,
+                      productAvailable,
+                      colorAvailable,
+                    } = row;
                     const showProductDetails = productAvailable && product;
                     const showColorStage = showProductDetails || row.hasProductIssue;
                     const showPricingAndLfStage =
@@ -483,6 +524,8 @@ export function CustomerQuoteView({
                                 updateRow(item.rowKey, {
                                   product_id: val,
                                   productIssue: null,
+                                  material_id: null,
+                                  measure_id: null,
                                   material_type: '',
                                 });
                               }}
@@ -517,7 +560,7 @@ export function CustomerQuoteView({
                                   {product.name}
                                 </span>
                                 <span className="font-mono text-[11px] text-slate-500">
-                                  ({formatCAD(product.price_per_lf_cents)})
+                                  ({formatCAD(row.effectivePriceCents ?? product.price_per_lf_cents)}/lf)
                                 </span>
                               </div>
                             )}
@@ -527,11 +570,48 @@ export function CustomerQuoteView({
                         {/* Step 1b: Material Type selection (options come from the selected product) */}
                         <td className="px-4 py-3 align-top text-left">
                           {showProductDetails && product ? (
-                            productMaterials.length > 0 ? (
+                            hasStructuredMaterials ? (
+                              <div className="space-y-1.5">
+                                <select
+                                  value={item.material_id ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value ? Number(e.target.value) : null;
+                                    const mat = productMaterialRows.find((m) => m.id === val) ?? null;
+                                    updateRow(item.rowKey, {
+                                      material_id: val,
+                                      measure_id: null,
+                                      material_type: mat?.name ?? '',
+                                    });
+                                  }}
+                                  className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                    row.hasMaterialIssue
+                                      ? 'border-red-500 bg-white text-red-800'
+                                      : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                  }`}
+                                >
+                                  <option value="">-- Select material type --</option>
+                                  {productMaterialRows.map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({formatCAD(m.price_per_lf_cents)}/lf)
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedMaterial && (
+                                  <div className="font-mono text-[11px] text-slate-500">
+                                    {formatCAD(selectedMaterial.price_per_lf_cents)}/lf
+                                    {row.selectedMeasure?.price_per_lf_cents != null && (
+                                      <span className="text-[#084091]">
+                                        {' '}→ {formatCAD(row.selectedMeasure.price_per_lf_cents)}/lf (measure)
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : legacyMaterials.length > 0 ? (
                               <select
                                 value={item.material_type}
                                 onChange={(e) =>
-                                  updateRow(item.rowKey, { material_type: e.target.value })
+                                  updateRow(item.rowKey, { material_type: e.target.value, material_id: null, measure_id: null })
                                 }
                                 className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
                                   row.hasMaterialIssue
@@ -540,7 +620,7 @@ export function CustomerQuoteView({
                                 }`}
                               >
                                 <option value="">-- Select material type --</option>
-                                {productMaterials.map((m) => (
+                                {legacyMaterials.map((m) => (
                                   <option key={m} value={m}>
                                     {m}
                                   </option>
@@ -623,48 +703,86 @@ export function CustomerQuoteView({
                           )}
                         </td>
 
-                        {/* Step 2b: Measures — Width (in), Gauge (ga), Length (ft) */}
+                        {/* Step 2b: Measures — saved-measure picker (per material) + Width (in), Gauge (ga), Length (ft) */}
                         <td className="px-4 py-3 align-top text-left">
                           {showColorStage ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={item.width_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { width_input: e.target.value })
-                                }
-                                placeholder='Width (in)'
-                                title="Width (in)"
-                                aria-label="Width (in)"
-                                className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
-                              <input
-                                type="text"
-                                maxLength={20}
-                                value={item.gauge_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { gauge_input: e.target.value })
-                                }
-                                placeholder="Gauge (ga)"
-                                title="Gauge (ga)"
-                                aria-label="Gauge (ga)"
-                                className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={item.length_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { length_input: e.target.value })
-                                }
-                                placeholder="Length (ft)"
-                                title="Length (ft)"
-                                aria-label="Length (ft)"
-                                className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
+                            <div className="flex flex-col gap-1.5">
+                              {materialMeasures.length > 0 && (
+                                <select
+                                  value={item.measure_id ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value ? Number(e.target.value) : null;
+                                    const ms = materialMeasures.find((m) => m.id === val) ?? null;
+                                    updateRow(item.rowKey, {
+                                      measure_id: val,
+                                      width_input: ms?.width_in != null ? String(ms.width_in) : item.width_input,
+                                      gauge_input: ms?.gauge ?? '',
+                                      length_input: ms?.length_ft != null ? String(ms.length_ft) : item.length_input,
+                                    });
+                                  }}
+                                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 focus:border-[#084091] focus:outline-none"
+                                >
+                                  <option value="">-- Use saved measure (optional) --</option>
+                                  {materialMeasures.map((m) => {
+                                    const parts = [
+                                      m.width_in != null ? `${m.width_in}"` : null,
+                                      m.gauge?.trim() ? `${m.gauge.trim()} ga` : null,
+                                      m.length_ft != null ? `${m.length_ft}'` : null,
+                                    ].filter(Boolean);
+                                    return (
+                                      <option key={m.id} value={m.id}>
+                                        {parts.join(' · ') || 'Unnamed measure'}
+                                        {m.price_per_lf_cents != null ? ` (${formatCAD(m.price_per_lf_cents)}/lf)` : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              )}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={item.width_input}
+                                  onChange={(e) =>
+                                    updateRow(item.rowKey, { width_input: e.target.value, measure_id: null })
+                                  }
+                                  placeholder='Width (in)'
+                                  title="Width (in)"
+                                  aria-label="Width (in)"
+                                  className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                                <input
+                                  type="text"
+                                  maxLength={20}
+                                  value={item.gauge_input}
+                                  onChange={(e) =>
+                                    updateRow(item.rowKey, { gauge_input: e.target.value, measure_id: null })
+                                  }
+                                  placeholder="Gauge (ga)"
+                                  title="Gauge (ga)"
+                                  aria-label="Gauge (ga)"
+                                  className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={item.length_input}
+                                  onChange={(e) =>
+                                    updateRow(item.rowKey, { length_input: e.target.value, measure_id: null })
+                                  }
+                                  placeholder="Length (ft)"
+                                  title="Length (ft)"
+                                  aria-label="Length (ft)"
+                                  className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                              </div>
+                              {item.measure_id == null && materialMeasures.length > 0 && (
+                                <span className="text-[10px] text-slate-400">
+                                  Custom values are used for this quote only (not saved to the product).
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="block text-xs text-slate-400">Select product first</span>

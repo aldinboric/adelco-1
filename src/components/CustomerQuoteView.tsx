@@ -251,6 +251,7 @@ export function CustomerQuoteView({
         body: JSON.stringify({
           quote_date: draft.quote_date,
           customer_name: draft.customer_name.trim() || null,
+          additional_note: draft.additional_note.trim() || null,
           items,
         }),
       });
@@ -282,6 +283,7 @@ export function CustomerQuoteView({
         body: JSON.stringify({
           quote_date: draft.quote_date,
           customer_name: draft.customer_name.trim() || null,
+          additional_note: draft.additional_note.trim() || null,
           items,
         }),
       });
@@ -845,6 +847,25 @@ export function CustomerQuoteView({
             </div>
           </>
         )}
+      </div>
+
+      {/* Additional Note — written onto the ruled lines in the PDF export */}
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <label
+          htmlFor="quote-additional-note"
+          className="mb-1.5 block text-xs font-semibold text-slate-700"
+        >
+          Additional Note <span className="font-normal text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          id="quote-additional-note"
+          rows={3}
+          maxLength={2000}
+          value={draft.additional_note}
+          onChange={(e) => onChangeDraft({ ...draft, additional_note: e.target.value })}
+          placeholder="Note for the customer — printed in the Additional Notes section of the PDF export."
+          className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+        />
       </div>
     </div>
   );

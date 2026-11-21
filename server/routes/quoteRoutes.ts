@@ -18,6 +18,7 @@ import {
   type ExportQuotePayload,
 } from '../exports.ts';
 import {
+  parseAdditionalNote,
   parseIsoDate,
   parseOptionalCustomerName,
   parsePositiveInt,
@@ -80,12 +81,14 @@ function queryIssuedQuotes(query: Request['query']): IssuedQuoteRow[] {
 function buildDraftPayloadForExport(body: Record<string, unknown>): ExportQuotePayload {
   const quoteDate = parseIsoDate(body.quote_date);
   const customerName = parseOptionalCustomerName(body.customer_name);
+  const additionalNote = parseAdditionalNote(body.additional_note);
   const { items, totalCents } = validateAndBuildQuoteLines(body.items, { requireAvailable: false });
 
   return {
     quote_number: 'DRAFT',
     quote_date: quoteDate,
     customer_name: customerName,
+    additional_note: additionalNote,
     total_cents: totalCents,
     items,
   };
@@ -180,6 +183,7 @@ export function createQuoteRouter(): Router {
       try {
         const quoteDate = parseIsoDate(req.body?.quote_date);
         const customerName = parseOptionalCustomerName(req.body?.customer_name);
+        const additionalNote = parseAdditionalNote(req.body?.additional_note);
         const { items: validatedItems, totalCents } = validateAndBuildQuoteLines(req.body?.items, {
           requireAvailable: true,
         });
@@ -191,9 +195,9 @@ export function createQuoteRouter(): Router {
 
           const quoteInfo = db
             .prepare(
-              'INSERT INTO issued_quotes (quote_number, quote_date, customer_name, total_cents, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+              'INSERT INTO issued_quotes (quote_number, quote_date, customer_name, additional_note, total_cents, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
             )
-            .run(quoteNumber, quoteDate, customerName, totalCents, req.authUser?.username ?? null, now);
+            .run(quoteNumber, quoteDate, customerName, additionalNote, totalCents, req.authUser?.username ?? null, now);
 
           const quoteId = Number(quoteInfo.lastInsertRowid);
           const insertItem = db.prepare(`
@@ -303,6 +307,7 @@ export function createQuoteRouter(): Router {
       res.json({
         customer_name: quote.customer_name ?? '',
         quote_date: new Date().toISOString().slice(0, 10),
+        additional_note: quote.additional_note ?? '',
         source_quote_number: quote.quote_number,
         items: draftItems,
       });
@@ -364,6 +369,7 @@ export function createQuoteRouter(): Router {
         quote_number: quote.quote_number,
         quote_date: quote.quote_date,
         customer_name: quote.customer_name,
+        additional_note: quote.additional_note ?? null,
         total_cents: quote.total_cents,
         items,
       });
@@ -396,6 +402,7 @@ export function createQuoteRouter(): Router {
         quote_number: quote.quote_number,
         quote_date: quote.quote_date,
         customer_name: quote.customer_name,
+        additional_note: quote.additional_note ?? null,
         total_cents: quote.total_cents,
         items,
       });

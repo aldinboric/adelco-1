@@ -268,17 +268,31 @@ function initSchema(db: Database.Database): void {
     );
   });
 
+  // If an older build already created product_materials without measure columns
+  // (legacy two-table layout), add the missing columns in place — no data loss.
+  ensureColumn(db, 'product_materials', 'width_in', 'width_in REAL');
+  ensureColumn(db, 'product_materials', 'gauge', 'gauge TEXT');
+  ensureColumn(db, 'product_materials', 'length_ft', 'length_ft REAL');
+
   migrateProductMaterials(db);
 }
 
-// One-time migration: unpack legacy comma-separated metal_products.material_type
-// values into product_materials rows, each inheriting the product's current price.
+// One-time, non-destructive migration to the single-table product_materials layout:
+// 1. If the legacy two-table layout exists (product_material_measures), copy each
+//    material's measures (and a per-measure price override, first one wins) into
+//    product_materials. The legacy table itself is left untouched.
+// 2. Unpack legacy comma-separated metal_products.material_type values into
+//    product_materials rows, each inheriting the product's current price.
 // The material_type column stays in sync (comma-joined names) for legacy readers.
 function migrateProductMaterials(db: Database.Database): void {
   const flag = db
     .prepare("SELECT value FROM app_settings WHERE key = 'product_materials_migrated'")
     .get() as { value: string } | undefined;
   if (flag?.value === '1') return;
+
+  const legacyMeasuresTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'product_material_measures'")
+    .get();
 
   const products = db
     .prepare('SELECT id, material_type, price_per_lf_cents FROM metal_products ORDER BY id ASC')
@@ -293,6 +307,39 @@ function migrateProductMaterials(db: Database.Database): void {
   `);
   const now = new Date().toISOString();
   db.transaction(() => {
+    // Step 1: absorb legacy product_material_measures rows into product_materials.
+    if (legacyMeasuresTable) {
+      const legacyRows = db
+        .prepare(
+          'SELECT material_id, width_in, gauge, length_ft, price_per_lf_cents FROM product_material_measures ORDER BY material_id ASC, id ASC'
+        )
+        .all() as Array<{
+        material_id: number;
+        width_in: number | null;
+        gauge: string | null;
+        length_ft: number | null;
+        price_per_lf_cents: number | null;
+      }>;
+      const merge = db.prepare(`
+        UPDATE product_materials
+        SET width_in = COALESCE(width_in, ?),
+            gauge = COALESCE(gauge, ?),
+            length_ft = COALESCE(length_ft, ?),
+            price_per_lf_cents = COALESCE(?, price_per_lf_cents)
+        WHERE id = ?
+      `);
+      const priceTakenFor = new Set<number>();
+      for (const m of legacyRows) {
+        const priceOverride =
+          m.price_per_lf_cents !== null && !priceTakenFor.has(m.material_id)
+            ? m.price_per_lf_cents
+            : null;
+        if (m.price_per_lf_cents !== null) priceTakenFor.add(m.material_id);
+        merge.run(m.width_in, m.gauge, m.length_ft, priceOverride, m.material_id);
+      }
+    }
+
+    // Step 2: unpack comma-separated material_type for products without material rows.
     for (const p of products) {
       if (existing.has(p.id)) continue;
       const names = (p.material_type ?? '')

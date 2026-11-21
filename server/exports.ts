@@ -1582,29 +1582,12 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     align: 'right',
   });
 
-  // Additional Notes & Signatures block (replaces the old thank-you line)
-  let notesY = y + footerH + 36;
-  const notesBlockH = 30 + 3 * 22 + 26 + 30; // label + 3 note lines + gap + signature block
-  if (notesY + notesBlockH > doc.page.height - 40) {
+  // Signatures sit directly below the table footer (not at the bottom of the page).
+  let sigY = y + footerH + 34;
+  if (sigY + 50 > doc.page.height - 40) {
     doc.addPage();
-    notesY = 40;
+    sigY = 40;
   }
-
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_DARK);
-  doc.text('Additional Notes', 40, notesY);
-
-  doc.save();
-  doc.lineWidth(0.5).strokeColor('#CBD5E1');
-  for (let i = 0; i < 3; i++) {
-    const lineY = notesY + 30 + i * 22;
-    doc.moveTo(40, lineY).lineTo(doc.page.width - 40, lineY).stroke();
-  }
-  doc.restore();
-
-  // Signatures sit near the bottom of the page (but not flush against the bottom edge),
-  // never overlapping the notes lines above them.
-  const notesEndY = notesY + 30 + 3 * 22;
-  const sigY = Math.max(notesEndY + 26, doc.page.height - 40 - 50);
   const halfW = ((doc.page.width - 80) / 2 - 16) / 2;
   const sigCols = [
     { x: 40, label: 'Customer Signature' },

@@ -1329,12 +1329,20 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,
-      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 7.5 })),
+      cells: quote.items.map((it) => ({
+        // Measure only a capped prefix of long notes — the full text is wrapped
+        // inside the cell at render time and must not inflate the column (which
+        // would squeeze Total Price and wrap its currency amounts).
+        text: (it.note?.trim() || '').slice(0, 24),
+        fontSize: 7.5,
+      })),
     },
     {
       label: 'Total\nPrice',
       align: 'right',
-      minW: 50,
+      // Floor fits the bold 10.5pt grand-total amount in the footer
+      // (~52.5pt text + 8pt padding), so amounts never wrap to a second line.
+      minW: 61,
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,

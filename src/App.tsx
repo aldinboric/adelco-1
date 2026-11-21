@@ -81,6 +81,7 @@ interface CopyQuoteApiResponse {
     linear_feet: number;
     additional_costs_cents: number;
     additional_costs_description: string;
+    note: string;
     productIssue: 'unavailable' | 'deleted' | null;
     colorIssue: 'unavailable' | 'deleted' | null;
     fallbackProductName: string;
@@ -318,6 +319,7 @@ export default function App() {
         additional_costs_input:
           item.additional_costs_cents > 0 ? centsToDollarsInput(item.additional_costs_cents) : '',
         additional_costs_description: item.additional_costs_description ?? '',
+        note_input: item.note ?? '',
         productIssue: item.productIssue,
         colorIssue: item.colorIssue,
         fallbackProductName: item.fallbackProductName,

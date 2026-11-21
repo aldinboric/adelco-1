@@ -78,6 +78,7 @@ export interface ValidatedQuoteLine {
   linear_feet: number;
   additional_costs_cents: number;
   additional_costs_description: string | null;
+  note: string | null;
   line_total_cents: number;
 }
 
@@ -130,6 +131,11 @@ export function validateAndBuildQuoteLines(
       typeof item.additional_costs_description === 'string' &&
       item.additional_costs_description.trim()
         ? item.additional_costs_description.trim().slice(0, 200)
+        : null;
+
+    const note =
+      typeof item.note === 'string' && item.note.trim()
+        ? item.note.trim().slice(0, 500)
         : null;
 
     const product = getProd.get(productId) as MetalProductRow | undefined;
@@ -210,6 +216,7 @@ export function validateAndBuildQuoteLines(
       linear_feet: lf,
       additional_costs_cents: additionalCostsCents,
       additional_costs_description: additionalCostsDescription,
+      note,
       line_total_cents: lineTotalCents,
     });
   }

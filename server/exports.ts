@@ -904,6 +904,7 @@ export interface ExportQuotePayload {
     linear_feet: number;
     additional_costs_cents: number;
     additional_costs_description?: string | null;
+    note?: string | null;
     line_total_cents: number;
   }>;
 }
@@ -931,6 +932,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           { key: 'lf', width: 12 },
           { key: 'addCostsDesc', width: 22 },
           { key: 'addCosts', width: 15 },
+          { key: 'note', width: 24 },
           { key: 'total', width: 15 },
         ]
       : [
@@ -944,13 +946,14 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           { key: 'combPrice', width: 15 },
           { key: 'lf', width: 12 },
           { key: 'addCosts', width: 15 },
+          { key: 'note', width: 24 },
           { key: 'total', width: 15 },
         ]
   );
 
-  const totalCols = hasAddCostDesc ? 12 : 11;
-  const lastColLetter = hasAddCostDesc ? 'L' : 'K';
-  const prevColLetter = hasAddCostDesc ? 'K' : 'J';
+  const totalCols = hasAddCostDesc ? 13 : 12;
+  const lastColLetter = hasAddCostDesc ? 'M' : 'L';
+  const prevColLetter = hasAddCostDesc ? 'L' : 'K';
 
   // Top brand block
   Worksheet.merge(ws, `A1:${lastColLetter}1`);
@@ -1034,6 +1037,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         'Linear ft',
         'Additional Costs Reason',
         'Additional Costs',
+        'Additional Notes',
         'Total Price',
       ]
     : [
@@ -1047,10 +1051,12 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         'Total / lf',
         'Linear ft',
         'Additional Costs',
+        'Additional Notes',
         'Total Price',
       ];
+  const noteCol = hasAddCostDesc ? 12 : 11;
   const isRightAlignedCol = (colNum: number) =>
-    hasAddCostDesc ? colNum >= 7 && colNum !== 10 : colNum >= 7;
+    hasAddCostDesc ? colNum >= 7 && colNum !== 10 && colNum !== noteCol : colNum >= 7 && colNum !== noteCol;
 
   Row.setHeight(ws, headerRowIdx, 26);
   headers.forEach((label, idx) => {
@@ -1095,6 +1101,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           item.linear_feet,
           sanitizeExcelText(item.additional_costs_description?.trim() || '—'),
           (item.additional_costs_cents ?? 0) / 100,
+          sanitizeExcelText(item.note?.trim() || ''),
           item.line_total_cents / 100,
         ]
       : [
@@ -1108,6 +1115,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           item.combined_price_per_lf_cents / 100,
           item.linear_feet,
           (item.additional_costs_cents ?? 0) / 100,
+          sanitizeExcelText(item.note?.trim() || ''),
           item.line_total_cents / 100,
         ];
 
@@ -1142,7 +1150,8 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
         alignment: {
           vertical: 'middle',
           horizontal: isRightAlignedCol(col) ? 'right' : 'left',
-          wrapText: col === 2 || col === 3 || col === 5 || col === 6 || (hasAddCostDesc && col === 10),
+          wrapText:
+            col === 2 || col === 3 || col === 5 || col === 6 || col === noteCol || (hasAddCostDesc && col === 10),
         },
         ...(numFmt ? { numFmt } : {}),
       });
@@ -1305,6 +1314,15 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
           { text: formatCAD(it.additional_costs_cents ?? 0), fontSize: 8.5 },
         ];
       }),
+    },
+    {
+      label: 'Additional\nNotes',
+      align: 'left',
+      minW: 60,
+      padX: 8,
+      headerPadX: 8,
+      headerFontSize: 8,
+      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 7.5 })),
     },
     {
       label: 'Total\nPrice',
@@ -1505,10 +1523,22 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       });
     }
 
-    // Col 6: Total Price
+    // Col 6: Additional Notes — justified, occupying 90% of the column width
+    // (padded 5% from each edge); empty note prints as an empty cell.
+    const noteText = item.note?.trim() ?? '';
+    if (noteText) {
+      doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
+      doc.text(noteText, cols[6].x + cols[6].w * 0.05, y + 4, {
+        width: cols[6].w * 0.9,
+        height: rowH - 8,
+        align: 'justify',
+      });
+    }
+
+    // Col 7: Total Price
     doc.font('Helvetica-Bold').fontSize(8.8).fillColor(BRAND_GREEN);
-    drawPdfCenteredText(doc, formatCAD(item.line_total_cents), cols[6].x + 4, y, rowH, {
-      width: cols[6].w - 8,
+    drawPdfCenteredText(doc, formatCAD(item.line_total_cents), cols[7].x + 4, y, rowH, {
+      width: cols[7].w - 8,
       align: 'right',
       height: rowH - 6,
       ellipsis: true,
@@ -1572,13 +1602,13 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
   drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[5].x + 4, y, footerH, {
-    width: cols[5].w - 8,
+    width: cols[5].w + cols[6].w - 8,
     align: 'right',
   });
 
   doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, formatCAD(quote.total_cents), cols[6].x + 4, y, footerH, {
-    width: cols[6].w - 8,
+  drawPdfCenteredText(doc, formatCAD(quote.total_cents), cols[7].x + 4, y, footerH, {
+    width: cols[7].w - 8,
     align: 'right',
   });
 

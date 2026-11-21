@@ -1322,7 +1322,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,
-      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 8 }))
+      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 7.5 })),
     },
     {
       label: 'Total\nPrice',
@@ -1346,108 +1346,18 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   let totalLinearFeet = 0;
 
-  // Additional Notes column: wrap each note at 90% of the column width, and size
-  // every row to its tallest cell (note lines, product stack, color stack, costs)
-  // so long notes are fully visible instead of clipped by a fixed row height.
-  const NOTE_FONT_SIZE = 8;
-  const noteTextW = cols[6].w * 0.9;
-  const noteLineH = NOTE_FONT_SIZE * 1.2 + 1.5;
-  const wrapNoteLines = (text: string): string[] => {
-    if (!text) return [];
-    doc.font('Helvetica').fontSize(NOTE_FONT_SIZE);
-    const lines: string[] = [];
-    for (const para of text.split('\n')) {
-      const words = para.split(/\s+/).filter(Boolean);
-      let cur = '';
-      for (const w of words) {
-        const t = cur ? `${cur} ${w}` : w;
-        if (doc.widthOfString(t) <= noteTextW) {
-          cur = t;
-        } else {
-          if (cur) lines.push(cur);
-          cur = w;
-        }
-      }
-      if (cur) lines.push(cur);
-    }
-    return lines;
-  };
-  const noteLinesPerItem = quote.items.map((it) => wrapNoteLines(it.note?.trim() ?? ''));
-
-  const rowHeights = quote.items.map((it, i) => {
-    const prodTextW = cols[1].w - 44;
-    doc.font('Helvetica-Bold').fontSize(8.3);
-    const prodNameH = Math.min(
-      measurePdfVisualTextHeight(doc, it.product_name, { width: prodTextW }),
-      19
-    );
-    doc.font('Helvetica').fontSize(7.6);
-    const detailLine = [formatGaugeLabel(it.gauge), it.material_type?.trim() || null]
-      .filter(Boolean)
-      .join('. ');
-    const measuresLabel = formatMeasureDimensions(it.width_in, it.length_ft);
-    const detailH = detailLine ? measurePdfVisualTextHeight(doc, detailLine, { width: prodTextW }) : 0;
-    const measuresH = measuresLabel
-      ? measurePdfVisualTextHeight(doc, measuresLabel, { width: prodTextW })
-      : 0;
-    const prodPriceH = measurePdfVisualTextHeight(doc, `(${formatCAD(it.product_price_per_lf_cents)})`, {
-      width: prodTextW,
-    });
-    const prodStackH =
-      prodNameH +
-      (detailLine ? 3 + detailH : 0) +
-      (measuresLabel ? 3 + measuresH : 0) +
-      3 +
-      prodPriceH;
-
-    const colorTextW = cols[2].w - 29;
-    doc.font('Helvetica').fontSize(8.3);
-    const colorNameH = Math.min(
-      measurePdfVisualTextHeight(doc, it.color_name, { width: colorTextW }),
-      19
-    );
-    doc.font('Helvetica').fontSize(7.6);
-    const colorPriceH = measurePdfVisualTextHeight(doc, `(+${formatCAD(it.color_price_per_lf_cents)})`, {
-      width: colorTextW,
-    });
-    const colorStackH = colorNameH + 3 + colorPriceH;
-
-    const addCostsDesc = it.additional_costs_description?.trim();
-    const addCostsW = cols[5].w - 8;
-    let addStackH = 0;
-    if (addCostsDesc) {
-      doc.font('Helvetica').fontSize(7);
-      const descH = Math.min(measurePdfVisualTextHeight(doc, addCostsDesc, { width: addCostsW }), 18);
-      doc.font('Helvetica').fontSize(8.5);
-      const amtH = measurePdfVisualTextHeight(doc, formatCAD(it.additional_costs_cents ?? 0), {
-        width: addCostsW,
-      });
-      addStackH = descH + 3 + amtH;
-    } else {
-      doc.font('Helvetica').fontSize(8.5);
-      addStackH = measurePdfVisualTextHeight(doc, formatCAD(it.additional_costs_cents ?? 0), {
-        width: addCostsW,
-      });
-    }
-
-    const noteH = noteLinesPerItem[i].length * noteLineH;
-    return Math.max(56, prodStackH + 12, colorStackH + 12, addStackH + 12, noteH + 12);
-  });
-
   for (let i = 0; i < quote.items.length; i++) {
-    const rowH = rowHeights[i];
-    if (y + rowH > doc.page.height - 40) {
+    if (y > doc.page.height - 95) {
       doc.addPage();
       y = drawHeader(40);
     }
 
     const item = quote.items[i];
     totalLinearFeet += item.linear_feet;
+    const rowH = 56;
     if (i % 2 === 1) {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
-    // Note column cell always gets a subtle background to set it apart.
-    doc.rect(cols[6].x, y, cols[6].w, rowH).fill(NEUTRAL_BG);
 
     // Col 0: #
     doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED);
@@ -1613,16 +1523,15 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       });
     }
 
-    // Col 6: Additional Notes — 8pt dark text, justified, occupying 90% of the
-    // column width (5% padding from each edge), top-aligned with 6pt padding;
-    // empty note prints as an empty (shaded) cell.
+    // Col 6: Additional Notes — justified, occupying 90% of the column width
+    // (padded 5% from each edge); empty note prints as an empty cell.
     const noteText = item.note?.trim() ?? '';
     if (noteText) {
-      doc.font('Helvetica').fontSize(NOTE_FONT_SIZE).fillColor(TEXT_DARK);
-      doc.text(noteText, cols[6].x + cols[6].w * 0.05, y + 6, {
-        width: noteTextW,
+      doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
+      doc.text(noteText, cols[6].x + cols[6].w * 0.05, y + 4, {
+        width: cols[6].w * 0.9,
+        height: rowH - 8,
         align: 'justify',
-        lineGap: 1.5,
       });
     }
 

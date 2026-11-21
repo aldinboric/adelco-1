@@ -1626,12 +1626,16 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   }
   doc.restore();
 
-  // Note text sits on the ruled lines (baseline just above each line).
+  // Note text sits ON the ruled lines: pdfkit's text y is the top of the line box,
+  // so offset by the font ascender (Helvetica: 718/1000) to put the alphabetic
+  // baseline exactly on each rule — identical for every line.
   if (noteLines.length > 0) {
-    doc.font('Helvetica').fontSize(9).fillColor(TEXT_DARK);
+    const noteFontSize = 9;
+    const baselineOffset = noteFontSize * 0.718;
+    doc.font('Helvetica').fontSize(noteFontSize).fillColor(TEXT_DARK);
     for (let i = 0; i < noteLines.length; i++) {
       const lineY = notesY + 30 + i * 22;
-      doc.text(noteLines[i], 40, lineY - 3, { width: noteWidth, lineBreak: false });
+      doc.text(noteLines[i], 40, lineY - baselineOffset, { width: noteWidth, lineBreak: false });
     }
   }
 

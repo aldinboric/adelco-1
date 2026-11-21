@@ -556,7 +556,7 @@ export function CustomerQuoteView({
                                 <option value="">-- Select material type --</option>
                                 {productMaterials.map((m) => (
                                   <option key={m.id} value={m.name}>
-                                    {m.name} ({formatCAD(m.price_per_lf_cents)}/lf)
+                                    {m.name}
                                   </option>
                                 ))}
                               </select>

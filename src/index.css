@@ -33,6 +33,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Hide native spinner arrows on number inputs — values are typed manually. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 @media print {
   body * {
     visibility: hidden !important;

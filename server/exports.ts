@@ -1322,7 +1322,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       padX: 8,
       headerPadX: 8,
       headerFontSize: 8,
-      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 8 }))
+      // Measured at 7.5pt so column-width allocation stays identical to the rest
+      // of the table — only the note cell's own rendering is styled differently.
+      cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 7.5 }))
     },
     {
       label: 'Total\nPrice',

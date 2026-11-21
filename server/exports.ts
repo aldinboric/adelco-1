@@ -888,7 +888,6 @@ export interface ExportQuotePayload {
   quote_number: string;
   quote_date: string;
   customer_name: string | null;
-  additional_note?: string | null;
   total_cents: number;
   items: Array<{
     product_name: string;
@@ -1583,33 +1582,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     align: 'right',
   });
 
-  // Additional Notes & Signatures block. The note text is written onto the ruled
-  // lines; there are always at least 3 lines, and if the note needs more room,
-  // extra lines are added below with the same 22pt spacing.
-  const noteText = quote.additional_note?.trim() ?? '';
-  const noteWidth = doc.page.width - 80;
-  const noteLines: string[] = [];
-  if (noteText) {
-    doc.font('Helvetica').fontSize(9);
-    for (const para of noteText.split('\n')) {
-      const words = para.split(/\s+/).filter(Boolean);
-      let cur = '';
-      for (const w of words) {
-        const t = cur ? `${cur} ${w}` : w;
-        if (doc.widthOfString(t) <= noteWidth) {
-          cur = t;
-        } else {
-          if (cur) noteLines.push(cur);
-          cur = w;
-        }
-      }
-      if (cur) noteLines.push(cur);
-    }
-  }
-  const noteLineCount = Math.max(3, noteLines.length);
-
+  // Additional Notes & Signatures block (replaces the old thank-you line)
   let notesY = y + footerH + 36;
-  const notesBlockH = 30 + noteLineCount * 22 + 26 + 30; // label + note lines + gap + signature block
+  const notesBlockH = 30 + 3 * 22 + 26 + 30; // label + 3 note lines + gap + signature block
   if (notesY + notesBlockH > doc.page.height - 40) {
     doc.addPage();
     notesY = 40;
@@ -1620,24 +1595,15 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
 
   doc.save();
   doc.lineWidth(0.5).strokeColor('#CBD5E1');
-  for (let i = 0; i < noteLineCount; i++) {
+  for (let i = 0; i < 3; i++) {
     const lineY = notesY + 30 + i * 22;
     doc.moveTo(40, lineY).lineTo(doc.page.width - 40, lineY).stroke();
   }
   doc.restore();
 
-  // Note text sits on the ruled lines (baseline just above each line).
-  if (noteLines.length > 0) {
-    doc.font('Helvetica').fontSize(9).fillColor(TEXT_DARK);
-    for (let i = 0; i < noteLines.length; i++) {
-      const lineY = notesY + 30 + i * 22;
-      doc.text(noteLines[i], 40, lineY - 3, { width: noteWidth, lineBreak: false });
-    }
-  }
-
   // Signatures sit near the bottom of the page (but not flush against the bottom edge),
   // never overlapping the notes lines above them.
-  const notesEndY = notesY + 30 + noteLineCount * 22;
+  const notesEndY = notesY + 30 + 3 * 22;
   const sigY = Math.max(notesEndY + 26, doc.page.height - 40 - 50);
   const halfW = ((doc.page.width - 80) / 2 - 16) / 2;
   const sigCols = [

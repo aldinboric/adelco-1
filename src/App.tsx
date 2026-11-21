@@ -56,7 +56,6 @@ function createEmptyDraft(): QuoteDraftState {
   return {
     customer_name: '',
     quote_date: todayIsoDate(),
-    additional_note: '',
     items: [],
     copiedFromQuoteNumber: null,
   };
@@ -71,7 +70,6 @@ function hasPermission(user: AuthUser | null, key: keyof UserPermissions): boole
 interface CopyQuoteApiResponse {
   customer_name: string;
   quote_date: string;
-  additional_note: string | null;
   source_quote_number: string;
   items: Array<{
     product_id: number | null;
@@ -330,7 +328,6 @@ export default function App() {
       setDraft({
         customer_name: data.customer_name,
         quote_date: data.quote_date,
-        additional_note: data.additional_note ?? '',
         items: mappedItems,
         copiedFromQuoteNumber: data.source_quote_number,
       });

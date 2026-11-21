@@ -61,14 +61,6 @@ export function parseOptionalCustomerName(raw: unknown): string | null {
   return trimmed ? trimmed.slice(0, 120) : null;
 }
 
-export const MAX_ADDITIONAL_NOTE = 2000;
-
-export function parseAdditionalNote(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed ? trimmed.slice(0, MAX_ADDITIONAL_NOTE) : null;
-}
-
 export interface ValidatedQuoteLine {
   source_product_id: number;
   source_color_id: number;

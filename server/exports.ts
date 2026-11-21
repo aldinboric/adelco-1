@@ -1478,26 +1478,26 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     .strokeColor(BRAND_BLUE)
     .stroke();
 
+  // Bottom + side borders match the table rows above (drawPdfRowBorders: 0.5, #E2E8F0)
   doc
     .moveTo(40, y + footerH)
     .lineTo(doc.page.width - 40, y + footerH)
-    .lineWidth(0.8)
-    .strokeColor('#CBD5E1')
+    .lineWidth(0.5)
+    .strokeColor('#E2E8F0')
     .stroke();
 
-  // Left & right borders so the footer closes the table frame like the rows above
   doc
     .moveTo(40, y)
     .lineTo(40, y + footerH)
-    .lineWidth(0.8)
-    .strokeColor('#CBD5E1')
+    .lineWidth(0.5)
+    .strokeColor('#E2E8F0')
     .stroke();
 
   doc
     .moveTo(doc.page.width - 40, y)
     .lineTo(doc.page.width - 40, y + footerH)
-    .lineWidth(0.8)
-    .strokeColor('#CBD5E1')
+    .lineWidth(0.5)
+    .strokeColor('#E2E8F0')
     .stroke();
 
   doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED);

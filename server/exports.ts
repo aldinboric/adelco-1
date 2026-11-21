@@ -380,6 +380,48 @@ function measurePdfTextWidth(
     .reduce((m, line) => Math.max(m, doc.widthOfString(line)), 0);
 }
 
+/**
+ * Hard-wrap text to a fixed pixel width: breaks on spaces, and splits words that
+ * are on their own longer than a full line mid-word. PDFKit only wraps at
+ * whitespace, so a long unbroken token would otherwise overflow the cell into
+ * the neighbouring column. Returns the text with '\n' inserted at wrap points.
+ */
+function wrapPdfTextToWidth(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  width: number,
+  fontSize: number,
+  bold = false
+): string {
+  doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+  const fits = (s: string) => doc.widthOfString(s) <= width;
+  const lines: string[] = [];
+  let line = '';
+  for (const rawWord of text.split(/\s+/).filter(Boolean)) {
+    let word = rawWord;
+    // Split a word that cannot fit on a line of its own.
+    while (word.length > 1 && !fits(word)) {
+      let k = word.length;
+      while (k > 1 && !fits(word.slice(0, k))) k--;
+      if (line) {
+        lines.push(line);
+        line = '';
+      }
+      lines.push(word.slice(0, k));
+      word = word.slice(k);
+    }
+    const candidate = line ? `${line} ${word}` : word;
+    if (fits(candidate)) {
+      line = candidate;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.join('\n');
+}
+
 function fitPdfColumns(
   doc: PDFKit.PDFDocument,
   usableW: number,
@@ -1539,12 +1581,15 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     }
 
     // Col 6: Notes — justified and vertically centered; uniform 4pt padding on
-    // all four sides (top/bottom gap equals left/right gap); ellipsis keeps the
-    // text inside the cell bounds; empty note prints as an empty cell.
+    // all four sides (top/bottom gap equals left/right gap), so the text block is
+    // equally distant from the left and right edges of its own column. The text
+    // is hard-wrapped to the inner width (long words split mid-word) so it can
+    // never bleed into the Total Price column; ellipsis caps the height.
     const noteText = item.note?.trim() ?? '';
     if (noteText) {
       doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
-      drawPdfCenteredText(doc, noteText, cols[6].x + 4, y, rowH, {
+      const wrappedNote = wrapPdfTextToWidth(doc, noteText, cols[6].w - 8, 7.5);
+      drawPdfCenteredText(doc, wrappedNote, cols[6].x + 4, y, rowH, {
         width: cols[6].w - 8,
         height: rowH - 8,
         align: 'justify',

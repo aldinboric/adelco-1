@@ -31,6 +31,67 @@ const NEUTRAL_BG = '#F7F7F7';
 const TEXT_DARK = '#0F172A';
 const TEXT_MUTED = '#475569';
 
+// ---------------------------------------------------------------------------
+// PDF text sanitizing: PDFKit's built-in fonts (Helvetica & co.) use
+// WinAnsiEncoding (CP1252), which has NO Croatian diacritics (ć, č, đ ...).
+// Unsupported chars get encoded as garbage bytes — e.g. "Aldin Borić (Test)"
+// renders as "Aldin Bori<0x10>r<0x02>@est)". Transliterate everything outside
+// WinAnsi to a safe base letter (NFD decomposition + strip combining marks),
+// keep the CP1252 specials (… – ' ' " š ž ...), and replace the rest with '?'.
+// Applied to text/width/height so measuring and rendering always agree.
+// ---------------------------------------------------------------------------
+
+/** Unicode chars CP1252 encodes in its 0x80–0x9F range (render correctly as-is). */
+const WINANSI_CP1252_SPECIALS = new Set([
+  '\u20AC', '\u201A', '\u0192', '\u201E', '\u2026', '\u2020', '\u2021',
+  '\u02C6', '\u2030', '\u0160', '\u2039', '\u0152', '\u017D', '\u2018',
+  '\u2019', '\u201C', '\u201D', '\u2022', '\u2013', '\u2014', '\u02DC',
+  '\u2122', '\u0161', '\u203A', '\u0153', '\u017E', '\u0178',
+]);
+
+/** Letters without a canonical NFD decomposition that still need a mapping. */
+const PDF_TRANSLITERATE: Record<string, string> = {
+  '\u0111': 'd', // d-with-stroke
+  '\u0110': 'D', // D-with-stroke
+};
+export function pdfSafeText(text: string): string {
+  let out = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x80) {
+      out += ch; // ASCII always safe
+    } else if (code >= 0xa0 && code <= 0xff) {
+      out += ch; // printable Latin-1 is identical in WinAnsi
+    } else if (WINANSI_CP1252_SPECIALS.has(ch)) {
+      out += ch; // CP1252 specials (…, –, quotes, š, ž, ...) are fine
+    } else if (PDF_TRANSLITERATE[ch]) {
+      out += PDF_TRANSLITERATE[ch];
+    } else {
+      // Strip diacritics via canonical decomposition: ć→c, č→c, đ→d, ...
+      const base = ch.normalize('NFD').replace(/[\u0300-\u036F]/g, '');
+      const baseCode = base.codePointAt(0) ?? 0;
+      out += base.length === 1 && baseCode < 0x80 ? base : '?';
+    }
+  }
+  return out;
+}
+
+/** PDFDocument factory that sanitizes all text input (render + measuring). */
+function createPdfDocument(options: PDFKit.PDFDocumentOptions): PDFKit.PDFDocument {
+  const doc = new PDFDocument(options);
+  const origText = doc.text.bind(doc);
+  const origWidthOfString = doc.widthOfString.bind(doc);
+  const origHeightOfString = doc.heightOfString.bind(doc);
+  const patched = doc as unknown as Record<string, unknown>;
+  patched.text = (text: string, ...rest: unknown[]) =>
+    origText(pdfSafeText(String(text)), ...(rest as [number?, number?, PDFKit.Mixins.TextOptions?]));
+  patched.widthOfString = (text: string, options?: PDFKit.Mixins.TextOptions) =>
+    origWidthOfString(pdfSafeText(String(text)), options);
+  patched.heightOfString = (text: string, options?: PDFKit.Mixins.TextOptions) =>
+    origHeightOfString(pdfSafeText(String(text)), options);
+  return doc;
+}
+
 let cachedLogoPng: Buffer | null = null;
 
 async function getCompanyLogoPng(): Promise<Buffer | null> {
@@ -584,7 +645,7 @@ export async function buildColorsExcel(colors: MetalColorRow[]): Promise<Buffer>
 }
 
 export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+  const doc = createPdfDocument({ size: 'LETTER', margin: 40 });
   let y = await drawPdfBrandHeader(
     doc,
     'Colors Catalog',
@@ -784,7 +845,7 @@ export async function buildProductsExcel(products: MetalProductWithMaterials[]):
 }
 
 export async function buildProductsPdf(products: MetalProductWithMaterials[]): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+  const doc = createPdfDocument({ size: 'LETTER', margin: 40 });
   let y = await drawPdfBrandHeader(
     doc,
     'Products Catalog',
@@ -1201,7 +1262,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     });
   }
 
-  Cell.setValue(ws, { row: totalRowIdx, col: totalCols - 1 }, 'TOTAL (CAD):');
+  Cell.setValue(ws, { row: totalRowIdx, col: totalCols - 1 }, 'GRAND TOTAL (CAD):');
   Cell.setFont(ws, { row: totalRowIdx, col: totalCols - 1 }, {
     name: 'Calibri',
     size: 11,
@@ -1225,7 +1286,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
 }
 
 export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+  const doc = createPdfDocument({ size: 'LETTER', margin: 40 });
   let y = await drawPdfBrandHeader(
     doc,
     'Customer Quote',
@@ -1625,7 +1686,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   );
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[5].x + 4, y, footerH, {
+  drawPdfCenteredText(doc, 'GRAND TOTAL (CAD)', cols[5].x + 4, y, footerH, {
     width: cols[5].w - 8,
     align: 'right',
   });
@@ -1749,7 +1810,7 @@ export async function buildIssuedQuotesExcel(quotes: IssuedQuoteRow[]): Promise<
 }
 
 export async function buildIssuedQuotesPdf(quotes: IssuedQuoteRow[]): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+  const doc = createPdfDocument({ size: 'LETTER', margin: 40 });
   let y = await drawPdfBrandHeader(
     doc,
     'Issued Quotes Register',

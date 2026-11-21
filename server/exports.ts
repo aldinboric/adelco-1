@@ -1325,19 +1325,6 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       ]),
     },
     {
-      label: 'Total / lf\n(with Color)',
-      align: 'right',
-      minW: 50,
-      padX: 8,
-      headerPadX: 8,
-      headerFontSize: 8,
-      cells: quote.items.map((it) => ({
-        text: formatCAD(it.combined_price_per_lf_cents),
-        bold: true,
-        fontSize: 8.5,
-      })),
-    },
-    {
       label: 'Linear\nFeet',
       align: 'right',
       minW: 40,
@@ -1366,7 +1353,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     },
     {
       label: 'Notes',
-      align: 'left',
+      align: 'right',
       minW: 40,
       padX: 8,
       headerPadX: 8,
@@ -1527,27 +1514,18 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       width: colorTextW,
     });
 
-    // Col 3: Total / lf (with Color)
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TEXT_DARK);
-    drawPdfCenteredText(doc, formatCAD(item.combined_price_per_lf_cents), cols[3].x + 4, y, rowH, {
+    // Col 3: Linear Feet
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_DARK);
+    drawPdfCenteredText(doc, String(item.linear_feet), cols[3].x + 4, y, rowH, {
       width: cols[3].w - 8,
       align: 'right',
       height: rowH - 6,
       ellipsis: true,
     });
 
-    // Col 4: Linear Feet
-    doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_DARK);
-    drawPdfCenteredText(doc, String(item.linear_feet), cols[4].x + 4, y, rowH, {
-      width: cols[4].w - 8,
-      align: 'right',
-      height: rowH - 6,
-      ellipsis: true,
-    });
-
-    // Col 5: Additional Costs (vertically centered description + amount stack)
+    // Col 4: Additional Costs (vertically centered description + amount stack)
     const addCostsDesc = item.additional_costs_description?.trim();
-    const addCostsW = cols[5].w - 8;
+    const addCostsW = cols[4].w - 8;
     if (addCostsDesc) {
       doc.font('Helvetica').fontSize(7);
       const descH = Math.min(
@@ -1561,26 +1539,26 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       const addStartY = y + Math.max(3, (rowH - addStackH) / 2);
 
       doc.font('Helvetica').fontSize(7).fillColor(TEXT_MUTED);
-      doc.text(addCostsDesc, cols[5].x + 4, addStartY, {
+      doc.text(addCostsDesc, cols[4].x + 4, addStartY, {
         width: addCostsW,
         align: 'right',
         height: descH + 2,
         ellipsis: true,
       });
       doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_DARK);
-      doc.text(amtText, cols[5].x + 4, addStartY + descH + 3, {
+      doc.text(amtText, cols[4].x + 4, addStartY + descH + 3, {
         width: addCostsW,
         align: 'right',
       });
     } else {
       doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_DARK);
-      drawPdfCenteredText(doc, formatCAD(item.additional_costs_cents ?? 0), cols[5].x + 4, y, rowH, {
+      drawPdfCenteredText(doc, formatCAD(item.additional_costs_cents ?? 0), cols[4].x + 4, y, rowH, {
         width: addCostsW,
         align: 'right',
       });
     }
 
-    // Col 6: Notes — justified and vertically centered; uniform 4pt padding on
+    // Col 5: Notes — justified and vertically centered; uniform 4pt padding on
     // all four sides (top/bottom gap equals left/right gap), so the text block is
     // equally distant from the left and right edges of its own column. The text
     // is hard-wrapped to the inner width (long words split mid-word) so it can
@@ -1588,19 +1566,19 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     const noteText = item.note?.trim() ?? '';
     if (noteText) {
       doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
-      const wrappedNote = wrapPdfTextToWidth(doc, noteText, cols[6].w - 8, 7.5);
-      drawPdfCenteredText(doc, wrappedNote, cols[6].x + 4, y, rowH, {
-        width: cols[6].w - 8,
+      const wrappedNote = wrapPdfTextToWidth(doc, noteText, cols[5].w - 8, 7.5);
+      drawPdfCenteredText(doc, wrappedNote, cols[5].x + 4, y, rowH, {
+        width: cols[5].w - 8,
         height: rowH - 8,
         align: 'justify',
         ellipsis: true,
       });
     }
 
-    // Col 7: Total Price
+    // Col 6: Total Price
     doc.font('Helvetica-Bold').fontSize(8.8).fillColor(BRAND_GREEN);
-    drawPdfCenteredText(doc, formatCAD(item.line_total_cents), cols[7].x + 4, y, rowH, {
-      width: cols[7].w - 8,
+    drawPdfCenteredText(doc, formatCAD(item.line_total_cents), cols[6].x + 4, y, rowH, {
+      width: cols[6].w - 8,
       align: 'right',
       height: rowH - 6,
       ellipsis: true,
@@ -1618,8 +1596,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
   }
 
   const footerH = 30;
-  doc.rect(40, y, cols[6].x - 40, footerH).fill(NEUTRAL_BG);
-  doc.rect(cols[6].x, y, doc.page.width - 40 - cols[6].x, footerH).fill(BRAND_GREEN);
+  doc.rect(40, y, cols[5].x - 40, footerH).fill(NEUTRAL_BG);
+  doc.rect(cols[5].x, y, doc.page.width - 40 - cols[5].x, footerH).fill(BRAND_GREEN);
 
   doc
     .moveTo(40, y)
@@ -1659,18 +1637,29 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     50,
     y,
     footerH,
-    { width: cols[6].x - 60, height: footerH - 6, ellipsis: true }
+    { width: cols[5].x - 60, height: footerH - 6, ellipsis: true }
   );
 
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[6].x + 4, y, footerH, {
-    width: cols[6].w - 8,
+  drawPdfCenteredText(doc, 'TOTAL (CAD)', cols[5].x + 4, y, footerH, {
+    width: cols[5].w - 8,
     align: 'right',
   });
 
-  doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#FFFFFF');
-  drawPdfCenteredText(doc, formatCAD(quote.total_cents), cols[7].x + 4, y, footerH, {
-    width: cols[7].w - 8,
+  // Grand total: shrink the font size dynamically so a large amount always
+  // fits on a single line instead of wrapping to two.
+  const totalText = formatCAD(quote.total_cents);
+  let totalFontSize = 10.5;
+  doc.font('Helvetica-Bold');
+  while (
+    totalFontSize > 6 &&
+    doc.fontSize(totalFontSize).widthOfString(totalText) > cols[6].w - 8
+  ) {
+    totalFontSize -= 0.5;
+  }
+  doc.font('Helvetica-Bold').fontSize(totalFontSize).fillColor('#FFFFFF');
+  drawPdfCenteredText(doc, totalText, cols[6].x + 4, y, footerH, {
+    width: cols[6].w - 8,
     align: 'right',
   });
 

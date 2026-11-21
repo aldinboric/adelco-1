@@ -452,7 +452,6 @@ export function CustomerQuoteView({
                     <th className="px-4 py-3 min-w-[230px] text-left">Measures</th>
                     {anyRowHasColorSelected && (
                       <>
-                        <th className="px-4 py-3 w-40 text-right">Total / lf (with Color)</th>
                         <th className="px-4 py-3 w-36 text-right">Linear Feet</th>
                         <th className="px-4 py-3 w-48 text-right">Additional Costs</th>
                       </>
@@ -712,17 +711,9 @@ export function CustomerQuoteView({
                           )}
                         </td>
 
-                        {/* Step 3: Combined / lf, Linear Feet input, Additional Costs */}
+                        {/* Step 3: Linear Feet input, Additional Costs */}
                         {anyRowHasColorSelected && (
                           <>
-                            <td className="px-4 py-3 align-top text-right font-mono text-xs font-semibold tabular-nums text-slate-900">
-                              {showPricingAndLfStage && row.combinedPriceCents !== null ? (
-                                <div>{formatCAD(row.combinedPriceCents)}</div>
-                              ) : (
-                                <span className="block text-slate-300">—</span>
-                              )}
-                            </td>
-
                             <td className="px-4 py-3 align-top text-right">
                               {showPricingAndLfStage ? (
                                 <input
@@ -835,7 +826,7 @@ export function CustomerQuoteView({
                 {/* Bottom Action + Grand Total Row */}
                 <tfoot>
                   <tr className="divide-x divide-slate-200 border-t-2 border-slate-200 bg-[#f7f7f7]">
-                    <td colSpan={anyRowHasColorSelected ? 8 : 6} className="px-4 py-3.5 text-left">
+                    <td colSpan={anyRowHasColorSelected ? 7 : 5} className="px-4 py-3.5 text-left">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <button
                           type="button"

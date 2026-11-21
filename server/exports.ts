@@ -1346,7 +1346,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
           { text: it.product_name, bold: true, fontSize: 8.3 },
           ...(detailLine ? [{ text: detailLine, fontSize: 7.6 }] : []),
           ...(measuresLabel ? [{ text: measuresLabel, bold: true, fontSize: 7.6 }] : []),
-          { text: `(${formatCAD(it.product_price_per_lf_cents)})`, fontSize: 7.6 },
+          { text: `(${formatCAD(it.product_price_per_lf_cents)}/lf)`, fontSize: 7.6 },
         ];
       }),
     },
@@ -1486,7 +1486,7 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     const materialLabel = item.material_type?.trim() || null;
     const measuresLabel = formatMeasureDimensions(item.width_in, item.length_ft);
     const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join('. ');
-    const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)})`;
+    const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)}/lf)`;
 
     doc.font('Helvetica-Bold').fontSize(8.3);
     const prodNameH = Math.min(

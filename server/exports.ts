@@ -1318,9 +1318,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     {
       label: 'Additional\nNotes',
       align: 'left',
-      minW: 60,
-      padX: 8,
-      headerPadX: 8,
+      minW: 46,
+      padX: 6,
+      headerPadX: 6,
       headerFontSize: 8,
       cells: quote.items.map((it) => ({ text: it.note?.trim() || '', fontSize: 8 }))
     },
@@ -1446,8 +1446,6 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     if (i % 2 === 1) {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
-    // Note column cell always gets a subtle background to set it apart.
-    doc.rect(cols[6].x, y, cols[6].w, rowH).fill(NEUTRAL_BG);
 
     // Col 0: #
     doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED);

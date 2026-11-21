@@ -620,10 +620,11 @@ export function AdminView({
       {/* Add / Edit User Modal */}
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/45"
           role="dialog"
           aria-modal="true"
         >
+          <div className="flex min-h-full items-center justify-center p-4">
           <div className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow-xl my-6">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="text-base font-semibold text-slate-900">
@@ -827,6 +828,7 @@ export function AdminView({
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}

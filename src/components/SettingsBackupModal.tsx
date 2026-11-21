@@ -82,10 +82,11 @@ export function SettingsBackupModal({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
+        className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/45"
         role="dialog"
         aria-modal="true"
       >
+        <div className="flex min-h-full items-center justify-center p-4">
         <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <h3 className="text-base font-semibold text-slate-900">
@@ -173,6 +174,7 @@ export function SettingsBackupModal({
               </div>
             </form>
           </div>
+        </div>
         </div>
       </div>
 

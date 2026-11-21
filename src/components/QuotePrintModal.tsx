@@ -25,14 +25,19 @@ export function QuotePrintModal({
   const { quote, items } = detail;
 
   return (
+    // The overlay is the scroll container; the inner wrapper uses min-h-full so the
+    // modal stays vertically centered when short, but grows with content when the
+    // quote has many items — avoiding the flex-centering overflow that clipped the
+    // top of tall reports and made them impossible to scroll.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-4xl rounded-lg border border-slate-200 bg-white shadow-2xl">
-        {/* Modal Action Bar (hidden when printing) */}
-        <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-[#f7f7f7] px-6 py-3.5 rounded-t-lg">
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="w-full max-w-4xl rounded-lg border border-slate-200 bg-white shadow-2xl">
+        {/* Modal Action Bar (hidden when printing) — sticky so it stays reachable on long quotes */}
+        <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-[#f7f7f7] px-6 py-3.5 rounded-t-lg">
           <div className="text-sm font-semibold text-slate-900">
             Issued Quote <span className="font-mono text-[#084091]">{quote.quote_number}</span>
           </div>
@@ -224,6 +229,7 @@ export function QuotePrintModal({
               </span>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

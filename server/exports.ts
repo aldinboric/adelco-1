@@ -146,7 +146,7 @@ async function drawPdfBrandHeader(
     .font('Helvetica')
     .fontSize(8)
     .fillColor(TEXT_DARK)
-    .text('Phone (WhatSapp): +1 (604) 369 9634', textX, startY + 41);
+    .text('Phone (WhatSapp): +1 (604) 369 9634', textX, startY + 43);
 
   doc
     .font('Helvetica-Bold')

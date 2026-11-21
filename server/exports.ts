@@ -1582,8 +1582,9 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     align: 'right',
   });
 
-  // Signatures sit directly below the table footer (not at the bottom of the page).
-  let sigY = y + footerH + 34;
+  // Signatures sit directly below the table footer (not at the bottom of the page),
+  // with a gap of 51pt (34 + half of it).
+  let sigY = y + footerH + 51;
   if (sigY + 50 > doc.page.height - 40) {
     doc.addPage();
     sigY = 40;

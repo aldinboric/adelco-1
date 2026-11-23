@@ -595,9 +595,9 @@ export function CustomerQuoteView({
                                 }`}
                               >
                                 <option value="">-- Select color --</option>
-                                {availableColors.map((c, cIdx) => (
+                                {availableColors.map((c) => (
                                   <option key={c.id} value={c.id}>
-                                    #{cIdx + 1} · {c.name} (+{formatCAD(c.price_per_lf_cents)}/lf)
+                                    {c.name}
                                   </option>
                                 ))}
                               </select>

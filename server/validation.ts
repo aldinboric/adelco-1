@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import { normalizeHexStrict } from '../shared/hex.ts';
-import { resolvePricePerLfCents, type Priced } from '../shared/size.ts';
+import { isPreview } from '../shared/preview.ts';
+import { resolvePricePerLfCents } from '../shared/size.ts';
 import { getDb, type MetalColorRow, type MetalProductRow } from './db.ts';
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -158,29 +159,30 @@ export function validateAndBuildQuoteLines(
     }
 
     // Material type: comes from the product's product_materials rows (each with its own
-    // price per linear ft). The selection must match one of them and is required when the
-    // product defines materials. Legacy products without material rows fall back to the
-    // product-level price and ignore any stale selection.
+    // price per linear ft). The selection must match one of them, and is required because
+    // a Product without any is a Preview and was refused above.
     const productMaterials = db
       .prepare('SELECT * FROM product_materials WHERE product_id = ? ORDER BY sort_order ASC, id ASC')
       .all(product.id) as Array<{ name: string; price_per_lf_cents: number }>;
+
+    // A Product with no Material Types is a Preview: saved for completion later, and
+    // never sold, so no Price it carries can be quoted from.
+    if (isPreview(productMaterials)) {
+      throw new ValidationError(
+        `Product "${product.name}" has no material types yet, so it cannot be quoted.`
+      );
+    }
+
     const rawMaterialType =
       typeof item.material_type === 'string' ? item.material_type.trim().slice(0, 200) : '';
-    let materialType: string | null = rawMaterialType || null;
-    let selectedMaterial: Priced | null = null;
-    if (productMaterials.length > 0) {
-      if (!materialType) {
-        throw new ValidationError(`Every quote line for "${product.name}" must have a Material Type selected.`);
-      }
-      const match = productMaterials.find((m) => m.name === materialType);
-      if (!match) {
-        throw new ValidationError(
-          `Material Type "${materialType}" is not defined for product "${product.name}".`
-        );
-      }
-      selectedMaterial = match;
-    } else if (materialType) {
-      materialType = null;
+    if (!rawMaterialType) {
+      throw new ValidationError(`Every quote line for "${product.name}" must have a Material Type selected.`);
+    }
+    const selectedMaterial = productMaterials.find((m) => m.name === rawMaterialType);
+    if (!selectedMaterial) {
+      throw new ValidationError(
+        `Material Type "${rawMaterialType}" is not defined for product "${product.name}".`
+      );
     }
 
     // Measures (optional): Width (in), Gauge (ga), Length (ft)
@@ -222,7 +224,7 @@ export function validateAndBuildQuoteLines(
       source_color_id: color.id,
       product_name: product.name,
       product_image_path: product.image_path,
-      material_type: materialType,
+      material_type: rawMaterialType,
       width_in: widthIn,
       gauge,
       length_ft: lengthFt,

@@ -44,7 +44,7 @@ beforeAll(async () => {
      VALUES (?, 'Aluminum', 500, 5, '26', 5, 0, ?)`
   ).run(fasciaWithMaterialId, now);
 
-  // A product with no Material Types at all: its own Price is the only one it has.
+  // A product with no Material Types at all: a Preview, saved but not sellable.
   panelWithoutMaterialsId = Number(
     db
       .prepare(
@@ -79,12 +79,18 @@ describe('quoting products that predate Sizes', () => {
     expect(items[0].product_price_per_lf_cents).toBe(500);
     expect(items[0].line_total_cents).toBe(6000);
   });
+});
 
-  it('prices a product with no Material Types from its own Price', () => {
-    const { items } = validateAndBuildQuoteLines([quoteLine(panelWithoutMaterialsId)], { requireAvailable: true });
+describe('quoting a Preview product', () => {
+  it('refuses a Product that has no Material Types', () => {
+    expect(() =>
+      validateAndBuildQuoteLines([quoteLine(panelWithoutMaterialsId)], { requireAvailable: true })
+    ).toThrow(/no material types/i);
+  });
 
-    expect(items[0].material_type).toBeNull();
-    expect(items[0].product_price_per_lf_cents).toBe(425);
-    expect(items[0].line_total_cents).toBe(5250);
+  it('refuses it when exporting an unissued Customer Quote, where Unavailable products are allowed', () => {
+    expect(() =>
+      validateAndBuildQuoteLines([quoteLine(panelWithoutMaterialsId)], { requireAvailable: false })
+    ).toThrow(/no material types/i);
   });
 });

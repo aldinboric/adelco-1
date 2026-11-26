@@ -182,7 +182,8 @@ function parseColorInput(body: unknown): { ok: true; value: ColorInput } | { ok:
 interface ProductInput {
   name: string;
   materialType: string;
-  priceCents: number;
+  /** Null when the form sends none: the legacy product-level price is then left as recorded. */
+  priceCents: number | null;
   removeImage: boolean;
   materials: ParsedMaterialTypeInput[];
   imageValid: boolean;
@@ -192,11 +193,15 @@ function parseProductInput(req: Request): { ok: true; value: ProductInput } | { 
   const b = req.body ?? {};
   const name = typeof b.name === 'string' ? b.name.trim().slice(0, 120) : '';
   const materialType = typeof b.material_type === 'string' ? b.material_type.trim().slice(0, 200) : '';
-  const priceCents = parseCents(b.price_per_lf_cents);
+  // ADR-0001: prices live on Material Types and Sizes, so the form no longer asks for one.
+  // The legacy column is still accepted, but only written when a value is actually sent.
+  const priceProvided =
+    b.price_per_lf_cents !== undefined && b.price_per_lf_cents !== null && b.price_per_lf_cents !== '';
+  const priceCents = priceProvided ? parseCents(b.price_per_lf_cents) : null;
   const removeImage = b.remove_image === 'true' || b.remove_image === true;
 
   if (!name) return { ok: false, error: 'Product name is required.' };
-  if (priceCents === null) {
+  if (priceProvided && priceCents === null) {
     return { ok: false, error: 'Valid non-negative price per linear ft is required.' };
   }
   if (req.file && !hasValidImageMagic(req.file.buffer)) {
@@ -404,7 +409,15 @@ export function createCatalogRouter(): Router {
           .prepare(
             'INSERT INTO metal_products (name, image_path, material_type, price_per_lf_cents, is_available, sort_order, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)'
           )
-          .run(name, imagePath, materialTypeColumnValue(materials, materialType), priceCents, maxSort.m + 1, now);
+          .run(
+            name,
+            imagePath,
+            materialTypeColumnValue(materials, materialType),
+            // The legacy column is still NOT NULL: a new product records 0 it never quotes from.
+            priceCents ?? 0,
+            maxSort.m + 1,
+            now
+          );
         const productId = Number(info.lastInsertRowid);
         replaceProductMaterials(db, productId, materials);
         const created = db.prepare('SELECT * FROM metal_products WHERE id = ?').get(productId) as MetalProductRow;
@@ -452,9 +465,17 @@ export function createCatalogRouter(): Router {
           nextImagePath = null;
         }
 
-        db.prepare(
-          'UPDATE metal_products SET name = ?, image_path = ?, material_type = ?, price_per_lf_cents = ? WHERE id = ?'
-        ).run(name, nextImagePath, materialTypeColumnValue(materials, materialType), priceCents, id);
+        // The legacy product-level price is only touched when this save supplies one, so an
+        // edit can never erase a price recorded before Material Types existed.
+        if (priceCents === null) {
+          db.prepare(
+            'UPDATE metal_products SET name = ?, image_path = ?, material_type = ? WHERE id = ?'
+          ).run(name, nextImagePath, materialTypeColumnValue(materials, materialType), id);
+        } else {
+          db.prepare(
+            'UPDATE metal_products SET name = ?, image_path = ?, material_type = ?, price_per_lf_cents = ? WHERE id = ?'
+          ).run(name, nextImagePath, materialTypeColumnValue(materials, materialType), priceCents, id);
+        }
         replaceProductMaterials(db, id, materials);
 
         if ((req.file || removeImage) && existing.image_path && existing.image_path !== nextImagePath) {

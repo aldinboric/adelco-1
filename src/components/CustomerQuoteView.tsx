@@ -8,6 +8,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { isPreview } from '../../shared/preview.ts';
 import { resolvePricePerLfCents } from '../../shared/size.ts';
 import type {
   IssuedQuoteDetail,
@@ -46,7 +47,10 @@ export function CustomerQuoteView({
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const availableProducts = products.filter((p) => p.is_available === 1);
+  // A Preview — a Product with no Material Types — has nothing to price a Line from, so it
+  // never reaches the picker. It becomes selectable as soon as its first Material Type is saved.
+  const availableProducts = products.filter((p) => p.is_available === 1 && !isPreview(p.materials));
+  const previewCount = products.filter((p) => isPreview(p.materials)).length;
   const availableColors = colors.filter((c) => c.is_available === 1);
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
@@ -102,9 +106,12 @@ export function CustomerQuoteView({
       productMaterials.find((m) => m.name === item.material_type.trim()) ?? null;
 
     const productAvailable = Boolean(product && product.is_available === 1);
+    const productIsPreview = Boolean(product && isPreview(productMaterials));
     const colorAvailable = Boolean(color && color.is_available === 1);
 
-    const hasProductIssue = Boolean(item.productIssue) || (item.product_id !== null && !productAvailable);
+    // A Preview has nothing to quote from, so it is never usable, however much stock it has.
+    const productUsable = productAvailable && !productIsPreview;
+    const hasProductIssue = Boolean(item.productIssue) || (item.product_id !== null && !productUsable);
     const hasColorIssue = Boolean(item.colorIssue) || (item.color_id !== null && !colorAvailable);
 
     // Base price comes from the shared resolver: selected Size, else Material Type,
@@ -117,7 +124,7 @@ export function CustomerQuoteView({
     const colorPriceCents = color ? color.price_per_lf_cents : null;
 
     const combinedPriceCents =
-      productAvailable && colorAvailable && basePriceCents !== null && colorPriceCents !== null
+      productUsable && colorAvailable && basePriceCents !== null && colorPriceCents !== null
         ? basePriceCents + colorPriceCents
         : null;
 
@@ -144,6 +151,8 @@ export function CustomerQuoteView({
       basePriceCents,
       hasMaterialIssue,
       productAvailable,
+      productIsPreview,
+      productUsable,
       colorAvailable,
       hasProductIssue,
       hasColorIssue,
@@ -434,6 +443,13 @@ export function CustomerQuoteView({
                 No available products found. Enable or add products in Products first.
               </p>
             )}
+            {previewCount > 0 && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                {previewCount === 1
+                  ? 'One product is a Preview and becomes selectable once its first material type is added.'
+                  : `${previewCount} products are Previews and become selectable once their first material type is added.`}
+              </p>
+            )}
           </div>
         ) : (
           <>
@@ -461,8 +477,8 @@ export function CustomerQuoteView({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {computedRows.map((row, idx) => {
-                    const { item, product, color, productMaterials, productAvailable, colorAvailable } = row;
-                    const showProductDetails = productAvailable && product;
+                    const { item, product, color, productMaterials, colorAvailable } = row;
+                    const showProductDetails = Boolean(product && row.productUsable);
                     const showColorStage = showProductDetails || row.hasProductIssue;
                     const showPricingAndLfStage =
                       (showProductDetails && colorAvailable && color) || row.hasColorIssue;
@@ -501,13 +517,13 @@ export function CustomerQuoteView({
                             >
                               <option value="">-- Select product --</option>
                               {availableProducts.map((p, pIdx) => {
-                                const mats = p.materials ?? [];
-                                const priceLabel =
-                                  mats.length > 0
-                                    ? `${mats.length} material${mats.length === 1 ? '' : 's'} · from ${formatCAD(
-                                        Math.min(...mats.map((m) => m.price_per_lf_cents))
-                                      )}/lf`
-                                    : `${formatCAD(p.price_per_lf_cents)}/lf`;
+                                // Every product here has Material Types: a Preview is never offered.
+                                const mats = p.materials;
+                                const priceLabel = `${mats.length} material${
+                                  mats.length === 1 ? '' : 's'
+                                } · from ${formatCAD(
+                                  Math.min(...mats.map((m) => m.price_per_lf_cents))
+                                )}/lf`;
                                 return (
                                   <option key={p.id} value={p.id}>
                                     #{pIdx + 1} · {p.name} ({priceLabel})
@@ -518,7 +534,18 @@ export function CustomerQuoteView({
 
                             {row.hasProductIssue && (
                               <div className="text-[11px] font-semibold text-red-700">
-                                Product &ldquo;{item.fallbackProductName}&rdquo; is no longer available — please select a replacement.
+                                {row.productIsPreview ? (
+                                  <>
+                                    Product &ldquo;{product?.name ?? item.fallbackProductName}&rdquo; has
+                                    no material types — a Preview cannot be quoted. Please select a
+                                    replacement.
+                                  </>
+                                ) : (
+                                  <>
+                                    Product &ldquo;{item.fallbackProductName}&rdquo; is no longer
+                                    available — please select a replacement.
+                                  </>
+                                )}
                               </div>
                             )}
 

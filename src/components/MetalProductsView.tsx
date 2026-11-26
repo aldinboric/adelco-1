@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { isPreview, productStatus, productStatusLabel } from '../../shared/preview.ts';
 import { useReorderableList } from '../hooks/useReorderableList';
 import type { MetalProduct } from '../types';
 import { apiFetch } from '../utils/api';
@@ -65,6 +66,9 @@ interface SizePayload extends SizeDimensions {
 // Same sanity ceiling the server applies to a Dimension's value.
 const MAX_DIMENSION_VALUE = 1_000_000;
 
+/** Says why a Preview cannot be quoted, for the Status cell's tooltip. */
+const PREVIEW_STATUS_HINT = 'No material types yet — this product cannot be quoted';
+
 function newSizeRow(pricePrefill = ''): SizeRowDraft {
   return {
     key: `size-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -92,6 +96,11 @@ function mirrorTypePrice(row: MaterialRowDraft, sizes: SizeRowDraft[]): string {
 
 function isBlankSizeRow(size: SizeRowDraft): boolean {
   return !size.price.trim() && !size.width.trim() && !size.gauge.trim() && !size.length.trim();
+}
+
+/** A row nothing has been typed into: saving with only such rows means no Material Types. */
+function isEmptyMaterialRow(row: MaterialRowDraft): boolean {
+  return !row.name.trim() && !row.price.trim() && row.sizes.every(isBlankSizeRow);
 }
 
 /** Mirrors the server's Size rules so the editor refuses bad input with the same wording. */
@@ -173,7 +182,6 @@ export function MetalProductsView({
   const [editingProduct, setEditingProduct] = useState<MetalProduct | null>(null);
   const [nameInput, setNameInput] = useState('');
   const [materialRows, setMaterialRows] = useState<MaterialRowDraft[]>([]);
-  const [priceInput, setPriceInput] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
@@ -182,6 +190,9 @@ export function MetalProductsView({
 
   const [deleteTarget, setDeleteTarget] = useState<MetalProduct | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // The Material Type whose removal would demote the Product, awaiting confirmation.
+  const [materialRemoval, setMaterialRemoval] = useState<MaterialRowDraft | null>(null);
 
   // Locally reordered list (optimistic drag & drop, synced from server props)
   const {
@@ -196,6 +207,15 @@ export function MetalProductsView({
 
   const isModalOpen = addModalOpen || editingProduct !== null;
 
+  // Nothing named: the save creates a Preview, which is an explicit action, never a silent save.
+  const willSaveAsPreview = materialRows.every(isEmptyMaterialRow);
+
+  // The Product as stored is quotable today, so removing its last Material Type demotes it.
+  const savedHasMaterialTypes = Boolean(
+    editingProduct &&
+      (editingProduct.materials.length > 0 || (editingProduct.material_type ?? '').trim())
+  );
+
   useEffect(() => {
     return () => {
       if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
@@ -208,7 +228,6 @@ export function MetalProductsView({
     setEditingProduct(null);
     setNameInput('');
     setMaterialRows([newMaterialRow()]);
-    setPriceInput('');
     setImageFile(null);
     setImagePreviewUrl(null);
     setRemoveImage(false);
@@ -248,8 +267,7 @@ export function MetalProductsView({
               sizes: [],
               expanded: false,
             }));
-    setMaterialRows(rows.length > 0 ? rows : [newMaterialRow(productPrice)]);
-    setPriceInput(productPrice);
+    setMaterialRows(rows.length > 0 ? rows : [newMaterialRow()]);
     setImageFile(null);
     setImagePreviewUrl(getImageUrl(product.image_path));
     setRemoveImage(false);
@@ -261,7 +279,7 @@ export function MetalProductsView({
     setEditingProduct(null);
     setNameInput('');
     setMaterialRows([]);
-    setPriceInput('');
+    setMaterialRemoval(null);
     setImageFile(null);
     setImagePreviewUrl(null);
     setRemoveImage(false);
@@ -284,11 +302,28 @@ export function MetalProductsView({
   };
 
   const addMaterialRow = () => {
-    setMaterialRows((prev) => [...prev, newMaterialRow(priceInput.trim())]);
+    setMaterialRows((prev) => [...prev, newMaterialRow()]);
   };
 
   const removeMaterialRow = (key: string) => {
     setMaterialRows((prev) => prev.filter((r) => r.key !== key));
+  };
+
+  // Removing the last Material Type demotes the Product to a Preview, so it is confirmed
+  // rather than done silently (ADR-0001).
+  const requestRemoveMaterialRow = (row: MaterialRowDraft) => {
+    const namedNow = materialRows.filter((r) => r.name.trim()).length;
+    const remainingNamed = materialRows.filter((r) => r.key !== row.key && r.name.trim()).length;
+    if (savedHasMaterialTypes && namedNow > 0 && remainingNamed === 0) {
+      setMaterialRemoval(row);
+      return;
+    }
+    removeMaterialRow(row.key);
+  };
+
+  const confirmRemoveMaterialRow = () => {
+    if (materialRemoval) removeMaterialRow(materialRemoval.key);
+    setMaterialRemoval(null);
   };
 
   const toggleMaterialExpanded = (key: string) => {
@@ -337,14 +372,9 @@ export function MetalProductsView({
     setFormError(null);
 
     const trimmedName = nameInput.trim();
-    const cents = dollarsInputToCents(priceInput);
 
     if (!trimmedName) {
       setFormError('Please enter a product name.');
-      return;
-    }
-    if (cents === null) {
-      setFormError('Please enter a valid base price per linear foot.');
       return;
     }
 
@@ -357,11 +387,11 @@ export function MetalProductsView({
     }> = [];
     const seenNames = new Set<string>();
     for (const row of materialRows) {
+      // The same rule the Save button reads, so "Save as Preview" and the payload agree.
+      if (isEmptyMaterialRow(row)) continue;
+
       const name = row.name.trim();
       const sizeRows = row.sizes.filter((s) => !isBlankSizeRow(s));
-      if (!name && sizeRows.length === 0 && !row.price.trim()) {
-        continue; // skip completely empty rows
-      }
       if (!name) {
         setFormError('Every material type needs a name (or remove the empty row).');
         return;
@@ -391,7 +421,6 @@ export function MetalProductsView({
     try {
       const formData = new FormData();
       formData.append('name', trimmedName);
-      formData.append('price_per_lf_cents', String(cents));
       formData.append('materials', JSON.stringify(materialsPayload));
       if (imageFile) {
         formData.append('image', imageFile);
@@ -409,7 +438,14 @@ export function MetalProductsView({
       }
 
       await onRefresh();
-      onNotify('success', editingProduct ? 'Product updated.' : 'Product added.');
+      onNotify(
+        'success',
+        willSaveAsPreview
+          ? `${trimmedName} saved as a Preview — add a material type to make it quotable.`
+          : editingProduct
+            ? 'Product updated.'
+            : 'Product added.'
+      );
       closeModal();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save product.');
@@ -454,7 +490,10 @@ export function MetalProductsView({
     }
   };
 
-  const availableCount = products.filter((p) => p.is_available === 1).length;
+  const previewCount = products.filter((p) => isPreview(p.materials)).length;
+  const availableCount = products.filter(
+    (p) => p.is_available === 1 && !isPreview(p.materials)
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -464,6 +503,14 @@ export function MetalProductsView({
           <span className="font-medium text-slate-700">{products.length} total products</span>
           <span aria-hidden="true">·</span>
           <span>{availableCount} available for new quotes</span>
+          {previewCount > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="font-medium text-amber-700">
+                {previewCount} preview{previewCount === 1 ? '' : 's'}
+              </span>
+            </>
+          )}
           <span aria-hidden="true">·</span>
           <span>Prices per linear ft live on each size, falling back to its material type</span>
         </div>
@@ -529,6 +576,7 @@ export function MetalProductsView({
               <tbody className="divide-y divide-slate-200">
                 {orderedProducts.map((product, idx) => {
                   const unavailable = product.is_available === 0;
+                  const status = productStatus(product.materials, product.is_available === 1);
                   const isDragging = dragId === product.id;
                   const isDropTarget = overId === product.id && dragId !== null && dragId !== product.id;
                   return (
@@ -597,11 +645,18 @@ export function MetalProductsView({
                         <SizesCell product={product} />
                       </td>
                       <td className="px-4 py-2 text-left text-xs font-medium">
-                        {unavailable ? (
-                          <span className="text-red-700">Unavailable</span>
-                        ) : (
-                          <span className="text-[#2a6f3b]">Available</span>
-                        )}
+                        <span
+                          className={
+                            status === 'preview'
+                              ? 'text-amber-700'
+                              : status === 'unavailable'
+                                ? 'text-red-700'
+                                : 'text-[#2a6f3b]'
+                          }
+                          title={status === 'preview' ? PREVIEW_STATUS_HINT : undefined}
+                        >
+                          {productStatusLabel(status)}
+                        </span>
                       </td>
                       {canManage && (
                         <td className="px-4 py-2 text-right">
@@ -683,6 +738,19 @@ export function MetalProductsView({
                 </div>
               )}
 
+              {willSaveAsPreview && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <span className="font-semibold">
+                    Saving without material types creates a Preview.
+                  </span>{' '}
+                  A Preview stays visibly incomplete and cannot be quoted until its first material
+                  type is added.
+                </div>
+              )}
+
+              {/* ADR-0001: prices live on Material Types and Sizes, so this form asks for
+                  none. The legacy product-level price stays in the schema, unwritten, so
+                  nothing already recorded is lost. */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Product Name
@@ -773,7 +841,7 @@ export function MetalProductsView({
                           )}
                           <button
                             type="button"
-                            onClick={() => removeMaterialRow(row.key)}
+                            onClick={() => requestRemoveMaterialRow(row)}
                             className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
                             title="Remove material type"
                             aria-label={`Remove material type #${idx + 1}`}
@@ -876,7 +944,7 @@ export function MetalProductsView({
                   })}
                   {materialRows.length === 0 && (
                     <p className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500">
-                      No material types — the base price below is used for every quote line of this product.
+                      No material types — add one to make this product quotable.
                     </p>
                   )}
                 </div>
@@ -885,30 +953,6 @@ export function MetalProductsView({
                   its own price. A material type with no sizes quotes at its own price. Both appear as
                   choices in the Customer Quote.
                 </p>
-              </div>
-
-              {/* ADR-0001 retires this field. It stays until a Product with no Material Types
-                  can be saved as a Preview: without it such a product would quote at $0.00. */}
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Base Price per linear ft (CAD){' '}
-                  <span className="font-normal text-slate-400">(fallback when no material types)</span>
-                </label>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-slate-400">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={priceInput}
-                    onChange={(e) => setPriceInput(e.target.value)}
-                    placeholder="4.25"
-                    className="w-full rounded-md border border-slate-300 py-2 pl-7 pr-3 font-mono text-sm tabular-nums text-slate-900 focus:border-[#084091] focus:outline-none"
-                    required
-                  />
-                </div>
               </div>
 
               <div>
@@ -975,13 +1019,31 @@ export function MetalProductsView({
                   disabled={saving}
                   className="rounded-md bg-[#084091] px-4 py-2 text-sm font-medium text-white hover:bg-[#063273] disabled:bg-slate-400"
                 >
-                  {saving ? 'Saving...' : editingProduct ? 'Save Changes' : 'Add Product'}
+                  {saving
+                    ? 'Saving...'
+                    : willSaveAsPreview
+                      ? 'Save as Preview'
+                      : editingProduct
+                        ? 'Save Changes'
+                        : 'Add Product'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={materialRemoval !== null}
+        title="Remove the last material type?"
+        message={`${
+          materialRemoval?.name.trim() ? `"${materialRemoval.name.trim()}"` : 'This material type'
+        } is the last material type of "${editingProduct?.name ?? 'this product'}". Saving without it makes the product a Preview, and a Preview can no longer be quoted until a material type is added back.`}
+        confirmLabel="Remove Material Type"
+        tone="danger"
+        onConfirm={confirmRemoveMaterialRow}
+        onCancel={() => setMaterialRemoval(null)}
+      />
 
       <ConfirmModal
         open={deleteTarget !== null}

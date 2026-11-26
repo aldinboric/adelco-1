@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import { normalizeHexStrict } from '../shared/hex.ts';
+import { resolvePricePerLfCents, type Priced } from '../shared/size.ts';
 import { getDb, type MetalColorRow, type MetalProductRow } from './db.ts';
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -166,7 +167,7 @@ export function validateAndBuildQuoteLines(
     const rawMaterialType =
       typeof item.material_type === 'string' ? item.material_type.trim().slice(0, 200) : '';
     let materialType: string | null = rawMaterialType || null;
-    let basePriceCents = product.price_per_lf_cents;
+    let selectedMaterial: Priced | null = null;
     if (productMaterials.length > 0) {
       if (!materialType) {
         throw new ValidationError(`Every quote line for "${product.name}" must have a Material Type selected.`);
@@ -177,7 +178,7 @@ export function validateAndBuildQuoteLines(
           `Material Type "${materialType}" is not defined for product "${product.name}".`
         );
       }
-      basePriceCents = match.price_per_lf_cents;
+      selectedMaterial = match;
     } else if (materialType) {
       materialType = null;
     }
@@ -202,7 +203,16 @@ export function validateAndBuildQuoteLines(
     const gauge =
       typeof item.gauge === 'string' && item.gauge.trim() ? item.gauge.trim().slice(0, 20) : null;
 
-    // Base price is the selected material type's price (or the product price as fallback).
+    // Base price is resolved in the shared module: selected Size, else Material Type,
+    // else the legacy product price (products that carry no material types).
+    const basePriceCents = resolvePricePerLfCents({
+      materialType: selectedMaterial,
+      product,
+      materialTypes: productMaterials,
+    });
+    if (basePriceCents === null) {
+      throw new ValidationError(`Product "${product.name}" has no price to quote from.`);
+    }
     const combinedCents = basePriceCents + color.price_per_lf_cents;
     const lineTotalCents = Math.round(lf * combinedCents) + additionalCostsCents;
     totalCents += lineTotalCents;

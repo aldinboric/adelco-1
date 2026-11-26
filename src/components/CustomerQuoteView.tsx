@@ -8,6 +8,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { resolvePricePerLfCents } from '../../shared/size.ts';
 import type {
   IssuedQuoteDetail,
   MetalColor,
@@ -106,13 +107,13 @@ export function CustomerQuoteView({
     const hasProductIssue = Boolean(item.productIssue) || (item.product_id !== null && !productAvailable);
     const hasColorIssue = Boolean(item.colorIssue) || (item.color_id !== null && !colorAvailable);
 
-    // Base price: the selected material type's own price per lf; products without
-    // material types fall back to the product-level price (legacy behavior).
-    const basePriceCents = selectedMaterial
-      ? selectedMaterial.price_per_lf_cents
-      : productMaterials.length === 0 && product
-        ? product.price_per_lf_cents
-        : null;
+    // Base price comes from the shared resolver: selected Size, else Material Type,
+    // else the legacy product price (products that carry no material types).
+    const basePriceCents = resolvePricePerLfCents({
+      materialType: selectedMaterial,
+      product,
+      materialTypes: productMaterials,
+    });
     const colorPriceCents = color ? color.price_per_lf_cents : null;
 
     const combinedPriceCents =
@@ -531,9 +532,11 @@ export function CustomerQuoteView({
                                 <span className="text-xs font-medium text-slate-800">
                                   {product.name}
                                 </span>
-                                <span className="font-mono text-[11px] text-slate-500">
-                                  ({row.basePriceCents !== null ? formatCAD(row.basePriceCents) : formatCAD(product.price_per_lf_cents)}/lf)
-                                </span>
+                                {row.basePriceCents !== null && (
+                                  <span className="font-mono text-[11px] text-slate-500">
+                                    ({formatCAD(row.basePriceCents)}/lf)
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>

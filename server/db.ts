@@ -37,6 +37,7 @@ export interface ProductMaterialRow {
   product_id: number;
   name: string;
   price_per_lf_cents: number;
+  /** Legacy Dimension columns: kept for rows written before Sizes existed. */
   width_in: number | null;
   gauge: string | null;
   length_ft: number | null;
@@ -44,7 +45,21 @@ export interface ProductMaterialRow {
   created_at: string;
 }
 
-export type MetalProductWithMaterials = MetalProductRow & { materials: ProductMaterialRow[] };
+export interface ProductMaterialSizeRow {
+  id: number;
+  material_id: number;
+  price_per_lf_cents: number;
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
+/** A Material Type as the API returns it: its Sizes in creation order. */
+export type MaterialTypeWithSizes = ProductMaterialRow & { sizes: ProductMaterialSizeRow[] };
+
+export type MetalProductWithMaterials = MetalProductRow & { materials: MaterialTypeWithSizes[] };
 
 export interface IssuedQuoteRow {
   id: number;
@@ -140,7 +155,7 @@ function ensureColumn(
   after?.();
 }
 
-function initSchema(db: Database.Database): void {
+export function initSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS metal_colors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,6 +225,18 @@ function initSchema(db: Database.Database): void {
       FOREIGN KEY (product_id) REFERENCES metal_products(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS product_material_sizes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      material_id INTEGER NOT NULL,
+      price_per_lf_cents INTEGER NOT NULL CHECK (price_per_lf_cents >= 0),
+      width_in REAL,
+      gauge TEXT,
+      length_ft REAL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (material_id) REFERENCES product_materials(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS quote_sequences (
       year INTEGER PRIMARY KEY,
       last_seq INTEGER NOT NULL DEFAULT 0
@@ -249,6 +276,7 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON issued_quote_items(quote_id);
     CREATE INDEX IF NOT EXISTS idx_issued_quotes_date ON issued_quotes(quote_date);
     CREATE INDEX IF NOT EXISTS idx_product_materials_product ON product_materials(product_id);
+    CREATE INDEX IF NOT EXISTS idx_product_material_sizes_material ON product_material_sizes(material_id);
   `);
 
   ensureColumn(db, 'issued_quotes', 'seller_name', 'seller_name TEXT');
@@ -280,6 +308,84 @@ function initSchema(db: Database.Database): void {
   ensureColumn(db, 'product_materials', 'length_ft', 'length_ft REAL');
 
   migrateProductMaterials(db);
+  migrateMaterialSizes(db);
+}
+
+/** Marks the one-time split of flat material rows into Material Types holding Sizes. */
+export const MATERIAL_SIZES_MIGRATED_KEY = 'product_material_sizes_migrated';
+
+/**
+ * One-time, non-destructive move to Material Types that hold Sizes: each material row's
+ * recorded Dimensions become one Size carrying that row's Price, and rows sharing a name
+ * collapse into a single Material Type that keeps the first row's Price. The legacy
+ * product_materials columns keep their values, so older readers and exports still find
+ * what they expect.
+ */
+export function migrateMaterialSizes(db: Database.Database): void {
+  const flag = db
+    .prepare('SELECT value FROM app_settings WHERE key = ?')
+    .get(MATERIAL_SIZES_MIGRATED_KEY) as { value: string } | undefined;
+  if (flag?.value === '1') return;
+
+  const rows = db
+    .prepare('SELECT * FROM product_materials ORDER BY product_id ASC, sort_order ASC, id ASC')
+    .all() as ProductMaterialRow[];
+
+  db.transaction(() => {
+    // The first row of each name stays the Material Type and keeps its own Price;
+    // later rows of that name give their Dimensions and Price up as one more Size.
+    const typeIdByKey = new Map<string, number>();
+    const sizeCountByType = new Map<number, number>();
+    const insertSize = db.prepare(`
+      INSERT INTO product_material_sizes (material_id, price_per_lf_cents, width_in, gauge, length_ft, sort_order, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const deleteType = db.prepare('DELETE FROM product_materials WHERE id = ?');
+    const now = new Date().toISOString();
+
+    for (const row of rows) {
+      const key = `${row.product_id}\u0000${row.name.trim().toLowerCase()}`;
+      const keptTypeId = typeIdByKey.get(key);
+      const typeId = keptTypeId ?? row.id;
+      typeIdByKey.set(key, typeId);
+
+      if (hasRecordedDimensions(row)) {
+        const sizeIndex = sizeCountByType.get(typeId) ?? 0;
+        insertSize.run(
+          typeId,
+          row.price_per_lf_cents,
+          row.width_in,
+          row.gauge,
+          row.length_ft,
+          sizeIndex,
+          now
+        );
+        sizeCountByType.set(typeId, sizeIndex + 1);
+      }
+
+      if (keptTypeId !== undefined && keptTypeId !== row.id) {
+        deleteType.run(row.id);
+      }
+    }
+
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(
+      MATERIAL_SIZES_MIGRATED_KEY,
+      '1'
+    );
+  })();
+}
+
+/** True when a row carries at least one Dimension, so it describes a Size rather than a general Price. */
+function hasRecordedDimensions(row: {
+  gauge: string | null;
+  width_in: number | null;
+  length_ft: number | null;
+}): boolean {
+  return (
+    Boolean(row.gauge && row.gauge.trim()) ||
+    (row.width_in !== null && row.width_in > 0) ||
+    (row.length_ft !== null && row.length_ft > 0)
+  );
 }
 
 // One-time, non-destructive migration to the single-table product_materials layout:
@@ -361,30 +467,53 @@ function migrateProductMaterials(db: Database.Database): void {
   })();
 }
 
-/** Fetch all product materials grouped by product_id. */
-export function getMaterialsByProductId(
-  db: Database.Database
-): Map<number, ProductMaterialRow[]> {
-  const rows = db
-    .prepare('SELECT * FROM product_materials ORDER BY product_id ASC, sort_order ASC, id ASC')
-    .all() as ProductMaterialRow[];
-  const map = new Map<number, ProductMaterialRow[]>();
+function groupBy<T, K>(rows: readonly T[], keyOf: (row: T) => K): Map<K, T[]> {
+  const map = new Map<K, T[]>();
   for (const row of rows) {
-    const list = map.get(row.product_id);
+    const key = keyOf(row);
+    const list = map.get(key);
     if (list) {
       list.push(row);
     } else {
-      map.set(row.product_id, [row]);
+      map.set(key, [row]);
     }
   }
   return map;
+}
+
+/** Fetch all product materials grouped by product_id, each with its Sizes in creation order. */
+export function getMaterialsByProductId(
+  db: Database.Database
+): Map<number, MaterialTypeWithSizes[]> {
+  const rows = db
+    .prepare('SELECT * FROM product_materials ORDER BY product_id ASC, sort_order ASC, id ASC')
+    .all() as ProductMaterialRow[];
+  const sizesByMaterial = getSizesByMaterialId(db);
+  const result = new Map<number, MaterialTypeWithSizes[]>();
+  for (const [productId, materials] of groupBy(rows, (row) => row.product_id)) {
+    result.set(
+      productId,
+      materials.map((m) => ({ ...m, sizes: sizesByMaterial.get(m.id) ?? [] }))
+    );
+  }
+  return result;
+}
+
+/** Fetch all Sizes grouped by material_id, in creation order. */
+export function getSizesByMaterialId(
+  db: Database.Database
+): Map<number, ProductMaterialSizeRow[]> {
+  const rows = db
+    .prepare('SELECT * FROM product_material_sizes ORDER BY material_id ASC, sort_order ASC, id ASC')
+    .all() as ProductMaterialSizeRow[];
+  return groupBy(rows, (row) => row.material_id);
 }
 
 /** Attach a nested `materials` array to product rows (empty array when none defined). */
 export function attachMaterials<T extends { id: number }>(
   db: Database.Database,
   products: T[]
-): Array<T & { materials: ProductMaterialRow[] }> {
+): Array<T & { materials: MaterialTypeWithSizes[] }> {
   const byProduct = getMaterialsByProductId(db);
   return products.map((p) => ({ ...p, materials: byProduct.get(p.id) ?? [] }));
 }

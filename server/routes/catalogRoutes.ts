@@ -20,6 +20,12 @@ import {
   buildProductsPdf,
 } from '../exports.ts';
 import {
+  materialTypeColumnValue,
+  type ParsedMaterialTypeInput,
+  parseMaterialsInput,
+  replaceProductMaterials,
+} from '../materials.ts';
+import {
   EXCEL_MIME,
   normalizeHex,
   paramAsString,
@@ -102,9 +108,6 @@ function applyReorder(
   return { ok: true, order };
 }
 
-const MAX_MATERIALS_PER_PRODUCT = 50;
-const MAX_MEASURE = 1_000_000;
-
 // ---------------------------------------------------------------------------
 // Shared route-handler factories (colors & products endpoints are structurally
 // identical — only the table and labels differ).
@@ -181,7 +184,7 @@ interface ProductInput {
   materialType: string;
   priceCents: number;
   removeImage: boolean;
-  materials: ParsedMaterialInput[];
+  materials: ParsedMaterialTypeInput[];
   imageValid: boolean;
 }
 
@@ -208,106 +211,6 @@ function parseProductInput(req: Request): { ok: true; value: ProductInput } | { 
   };
 }
 
-/** material_type column value kept in sync with the materials rows (legacy readers). */
-function materialTypeColumnValue(materials: ParsedMaterialInput[], fallback: string): string | null {
-  return materials.length > 0 ? materials.map((m) => m.name).join(', ') : fallback || null;
-}
-
-interface ParsedMaterialInput {
-  name: string;
-  priceCents: number;
-  widthIn: number | null;
-  gauge: string | null;
-  lengthFt: number | null;
-}
-
-// Materials arrive as a JSON string inside the multipart form (or as an array
-// for JSON clients). Each entry: { name, price_per_lf_cents, width_in?, gauge?, length_ft? }.
-function parseMaterialsInput(
-  raw: unknown
-): { ok: true; materials: ParsedMaterialInput[] } | { ok: false; error: string } {
-  if (raw === undefined || raw === null || raw === '') {
-    return { ok: true, materials: [] };
-  }
-  let parsed: unknown = raw;
-  if (typeof raw === 'string') {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return { ok: false, error: 'materials must be a valid JSON array.' };
-    }
-  }
-  if (!Array.isArray(parsed)) {
-    return { ok: false, error: 'materials must be an array.' };
-  }
-  if (parsed.length > MAX_MATERIALS_PER_PRODUCT) {
-    return { ok: false, error: `A product can have at most ${MAX_MATERIALS_PER_PRODUCT} material types.` };
-  }
-  const materials: ParsedMaterialInput[] = [];
-  const seen = new Set<string>();
-  for (const entry of parsed) {
-    const m = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
-    const name = typeof m.name === 'string' ? m.name.trim().slice(0, 100) : '';
-    if (!name) {
-      return { ok: false, error: 'Every material type needs a name.' };
-    }
-    const key = name.toLowerCase();
-    if (seen.has(key)) {
-      return { ok: false, error: `Duplicate material type "${name}".` };
-    }
-    seen.add(key);
-    const priceCents = parseCents(m.price_per_lf_cents);
-    if (priceCents === null) {
-      return {
-        ok: false,
-        error: `Material type "${name}" needs a valid non-negative price per linear ft.`,
-      };
-    }
-    let widthIn: number | null = null;
-    if (m.width_in !== undefined && m.width_in !== null && m.width_in !== '') {
-      const w = Number(m.width_in);
-      if (!Number.isFinite(w) || w <= 0 || w > MAX_MEASURE) {
-        return { ok: false, error: `Width (in) for "${name}" must be a positive number.` };
-      }
-      widthIn = w;
-    }
-    let lengthFt: number | null = null;
-    if (m.length_ft !== undefined && m.length_ft !== null && m.length_ft !== '') {
-      const l = Number(m.length_ft);
-      if (!Number.isFinite(l) || l <= 0 || l > MAX_MEASURE) {
-        return { ok: false, error: `Length (ft) for "${name}" must be a positive number.` };
-      }
-      lengthFt = l;
-    }
-    const gauge =
-      typeof m.gauge === 'string' && m.gauge.trim() ? m.gauge.trim().slice(0, 20) : null;
-    materials.push({ name, priceCents, widthIn, gauge, lengthFt });
-  }
-  return { ok: true, materials };
-}
-
-// Transactionally replace a product's material rows and keep the legacy
-// comma-joined material_type column in sync for older readers/exports.
-function replaceProductMaterials(
-  db: import('better-sqlite3').Database,
-  productId: number,
-  materials: ParsedMaterialInput[]
-): void {
-  const now = new Date().toISOString();
-  const del = db.prepare('DELETE FROM product_materials WHERE product_id = ?');
-  const ins = db.prepare(`
-    INSERT INTO product_materials (product_id, name, price_per_lf_cents, width_in, gauge, length_ft, sort_order, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const sync = db.prepare('UPDATE metal_products SET material_type = ? WHERE id = ?');
-  db.transaction(() => {
-    del.run(productId);
-    materials.forEach((m, idx) => {
-      ins.run(productId, m.name, m.priceCents, m.widthIn, m.gauge, m.lengthFt, idx, now);
-    });
-    sync.run(materials.length > 0 ? materials.map((m) => m.name).join(', ') : null, productId);
-  })();
-}
 
 function getAllColors(): MetalColorRow[] {
   return getDb()

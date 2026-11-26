@@ -1,6 +1,8 @@
 import {
   Ban,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   GripVertical,
   ImagePlus,
   Pencil,
@@ -17,7 +19,9 @@ import {
   dollarsInputToCents,
   formatCAD,
   formatMaterialMeasures,
+  formatSizeLabel,
   getImageUrl,
+  type SizeDimensions,
 } from '../utils/format';
 import { ConfirmModal } from './ConfirmModal';
 import { ExportButtons } from './ExportButtons';
@@ -34,25 +38,112 @@ interface MetalProductsViewProps {
   onNotify: (type: 'success' | 'error', text: string) => void;
 }
 
-// One editable material-type row inside the Add/Edit Product modal.
-interface MaterialRowDraft {
+// One editable Size row inside a Material Type in the Add/Edit Product modal.
+interface SizeRowDraft {
   key: string;
-  name: string;
   price: string;
   width: string;
   gauge: string;
   length: string;
 }
 
-function newMaterialRow(pricePrefill = ''): MaterialRowDraft {
+// One editable Material Type row. Its own price is only editable while it has no
+// Sizes; with Sizes it mirrors the first one, so removing every Size stays usable.
+interface MaterialRowDraft {
+  key: string;
+  name: string;
+  price: string;
+  sizes: SizeRowDraft[];
+  expanded: boolean;
+}
+
+/** A Size as the product endpoints receive it. */
+interface SizePayload extends SizeDimensions {
+  price_per_lf_cents: number;
+}
+
+// Same sanity ceiling the server applies to a Dimension's value.
+const MAX_DIMENSION_VALUE = 1_000_000;
+
+function newSizeRow(pricePrefill = ''): SizeRowDraft {
   return {
-    key: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    name: '',
+    key: `size-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     price: pricePrefill,
     width: '',
     gauge: '',
     length: '',
   };
+}
+
+function newMaterialRow(pricePrefill = '', sizes: SizeRowDraft[] = []): MaterialRowDraft {
+  return {
+    key: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    price: pricePrefill,
+    sizes,
+    expanded: true,
+  };
+}
+
+/** A Material Type keeps its first Size's price as the general price whenever it has Sizes. */
+function mirrorTypePrice(row: MaterialRowDraft, sizes: SizeRowDraft[]): string {
+  return sizes.length > 0 ? sizes[0].price : row.price;
+}
+
+function isBlankSizeRow(size: SizeRowDraft): boolean {
+  return !size.price.trim() && !size.width.trim() && !size.gauge.trim() && !size.length.trim();
+}
+
+/** Mirrors the server's Size rules so the editor refuses bad input with the same wording. */
+function validateSizes(
+  materialName: string,
+  rows: SizeRowDraft[]
+): { ok: true; sizes: SizePayload[] } | { ok: false; error: string } {
+  const sizes: SizePayload[] = [];
+  const seenLabels = new Set<string>();
+  for (const [index, row] of rows.entries()) {
+    const label = `Size #${index + 1} of "${materialName}"`;
+    const priceCents = dollarsInputToCents(row.price);
+    if (priceCents === null) {
+      return { ok: false, error: `${label} needs a valid non-negative price per linear ft.` };
+    }
+    let widthIn: number | null = null;
+    if (row.width.trim()) {
+      const w = Number(row.width.trim());
+      if (!Number.isFinite(w) || w <= 0 || w > MAX_DIMENSION_VALUE) {
+        return { ok: false, error: `Width (in) for ${label} must be a positive number.` };
+      }
+      widthIn = w;
+    }
+    let lengthFt: number | null = null;
+    if (row.length.trim()) {
+      const l = Number(row.length.trim());
+      if (!Number.isFinite(l) || l <= 0 || l > MAX_DIMENSION_VALUE) {
+        return { ok: false, error: `Length (ft) for ${label} must be a positive number.` };
+      }
+      lengthFt = l;
+    }
+    const gauge = row.gauge.trim() ? row.gauge.trim().slice(0, 20) : null;
+
+    const rendered = formatSizeLabel({ gauge, width_in: widthIn, length_ft: lengthFt });
+    if (!rendered) {
+      return {
+        ok: false,
+        error: `${label} needs at least one of gauge, width, or length.`,
+      };
+    }
+    const labelKey = rendered.toLowerCase();
+    if (seenLabels.has(labelKey)) {
+      return {
+        ok: false,
+        error: `Duplicate size "${rendered}" for material type "${materialName}".`,
+      };
+    }
+    seenLabels.add(labelKey);
+
+    sizes.push({ price_per_lf_cents: priceCents, width_in: widthIn, gauge, length_ft: lengthFt });
+  }
+  return { ok: true, sizes };
 }
 
 // Material names for a product, falling back to the legacy comma-separated column.
@@ -83,14 +174,17 @@ function MaterialChips({ product }: { product: MetalProduct }) {
   );
 }
 
-/** Per-material measures lines cell, e.g. "Aluminum: 36\" · 26 Ga · 10'". */
+/** Per-material measures lines cell, e.g. "Aluminum: 26 ga 5\" x 5' · 26 ga 5\" x 10'". */
 function MaterialMeasuresCell({ product }: { product: MetalProduct }) {
   const mats = product.materials ?? [];
   if (mats.length === 0) return <span className="text-slate-300">—</span>;
   return (
     <span className="block space-y-0.5">
       {mats.map((m) => {
-        const label = formatMaterialMeasures(m);
+        const sizeLabels = (m.sizes ?? [])
+          .map((s) => formatSizeLabel(s))
+          .filter((label): label is string => Boolean(label));
+        const label = sizeLabels.length > 0 ? sizeLabels.join(' · ') : formatMaterialMeasures(m);
         return (
           <span key={m.id} className="block">
             {label ? `${m.name}: ${label}` : m.name}
@@ -184,9 +278,14 @@ export function MetalProductsView({
             key: `mat-${m.id}`,
             name: m.name,
             price: centsToDollarsInput(m.price_per_lf_cents),
-            width: m.width_in != null ? String(m.width_in) : '',
-            gauge: m.gauge ?? '',
-            length: m.length_ft != null ? String(m.length_ft) : '',
+            sizes: (m.sizes ?? []).map((s) => ({
+              key: `size-${s.id}`,
+              price: centsToDollarsInput(s.price_per_lf_cents),
+              width: s.width_in != null ? String(s.width_in) : '',
+              gauge: s.gauge ?? '',
+              length: s.length_ft != null ? String(s.length_ft) : '',
+            })),
+            expanded: false,
           }))
         : (product.material_type ?? '')
             .split(',')
@@ -196,9 +295,8 @@ export function MetalProductsView({
               key: `legacy-${i}`,
               name,
               price: productPrice,
-              width: '',
-              gauge: '',
-              length: '',
+              sizes: [],
+              expanded: false,
             }));
     setMaterialRows(rows.length > 0 ? rows : [newMaterialRow(productPrice)]);
     setPriceInput(productPrice);
@@ -243,6 +341,47 @@ export function MetalProductsView({
     setMaterialRows((prev) => prev.filter((r) => r.key !== key));
   };
 
+  const toggleMaterialExpanded = (key: string) => {
+    setMaterialRows((prev) =>
+      prev.map((r) => (r.key === key ? { ...r, expanded: !r.expanded } : r))
+    );
+  };
+
+  const addSizeRow = (materialKey: string) => {
+    setMaterialRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== materialKey) return r;
+        // A new Size starts at the Type's price: the common case is a second length at the same rate.
+        const nextSizes = [...r.sizes, newSizeRow(r.price)];
+        return { ...r, expanded: true, sizes: nextSizes, price: mirrorTypePrice(r, nextSizes) };
+      })
+    );
+  };
+
+  const updateSizeRow = (materialKey: string, sizeKey: string, patch: Partial<SizeRowDraft>) => {
+    setMaterialRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== materialKey) return r;
+        const nextSizes = r.sizes.map((s) => (s.key === sizeKey ? { ...s, ...patch } : s));
+        return { ...r, sizes: nextSizes, price: mirrorTypePrice(r, nextSizes) };
+      })
+    );
+  };
+
+  const removeSizeRow = (materialKey: string, sizeKey: string) => {
+    setMaterialRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== materialKey) return r;
+        const nextSizes = r.sizes.filter((s) => s.key !== sizeKey);
+        // While Sizes remain the general price follows the first one; removing the last
+        // Size keeps its price, so the Type stays sellable instead of needing a re-entry.
+        const removedPrice = r.sizes.find((s) => s.key === sizeKey)?.price ?? r.price;
+        const price = nextSizes.length > 0 ? nextSizes[0].price : removedPrice;
+        return { ...r, sizes: nextSizes, price };
+      })
+    );
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -259,18 +398,18 @@ export function MetalProductsView({
       return;
     }
 
-    // Validate material rows: name + price required, measures optional but must be valid.
+    // Validate material types: name required, sizes validated exactly as the server does,
+    // and the general price required only while the type has no sizes (otherwise mirrored).
     const materialsPayload: Array<{
       name: string;
       price_per_lf_cents: number;
-      width_in: number | null;
-      gauge: string | null;
-      length_ft: number | null;
+      sizes: SizePayload[];
     }> = [];
     const seenNames = new Set<string>();
     for (const row of materialRows) {
       const name = row.name.trim();
-      if (!name && !row.price.trim() && !row.width.trim() && !row.gauge.trim() && !row.length.trim()) {
+      const sizeRows = row.sizes.filter((s) => !isBlankSizeRow(s));
+      if (!name && sizeRows.length === 0 && !row.price.trim()) {
         continue; // skip completely empty rows
       }
       if (!name) {
@@ -282,36 +421,20 @@ export function MetalProductsView({
         return;
       }
       seenNames.add(name.toLowerCase());
-      const priceCents = dollarsInputToCents(row.price);
-      if (priceCents === null) {
-        setFormError(`Material type "${name}" needs a valid price per linear ft.`);
+
+      const sizesResult = validateSizes(name, sizeRows);
+      if (!sizesResult.ok) {
+        setFormError(sizesResult.error);
         return;
       }
-      let widthIn: number | null = null;
-      if (row.width.trim()) {
-        const w = Number(row.width.trim());
-        if (!Number.isFinite(w) || w <= 0) {
-          setFormError(`Width (in) for "${name}" must be a positive number.`);
-          return;
-        }
-        widthIn = w;
+      const sizes = sizesResult.sizes;
+      const priceCents = sizes.length > 0 ? sizes[0].price_per_lf_cents : dollarsInputToCents(row.price);
+      if (priceCents === null) {
+        setFormError(`Material type "${name}" needs a valid non-negative price per linear ft.`);
+        return;
       }
-      let lengthFt: number | null = null;
-      if (row.length.trim()) {
-        const l = Number(row.length.trim());
-        if (!Number.isFinite(l) || l <= 0) {
-          setFormError(`Length (ft) for "${name}" must be a positive number.`);
-          return;
-        }
-        lengthFt = l;
-      }
-      materialsPayload.push({
-        name,
-        price_per_lf_cents: priceCents,
-        width_in: widthIn,
-        gauge: row.gauge.trim() ? row.gauge.trim().slice(0, 20) : null,
-        length_ft: lengthFt,
-      });
+
+      materialsPayload.push({ name, price_per_lf_cents: priceCents, sizes });
     }
 
     setSaving(true);
@@ -657,84 +780,166 @@ export function MetalProductsView({
                 </div>
 
                 <div className="space-y-2">
-                  {materialRows.map((row, idx) => (
-                    <div
-                      key={row.key}
-                      className="rounded-md border border-slate-200 bg-[#f7f7f7] p-2.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          maxLength={100}
-                          value={row.name}
-                          onChange={(e) => updateMaterialRow(row.key, { name: e.target.value })}
-                          placeholder={`Material #${idx + 1} — e.g. Aluminum`}
-                          aria-label={`Material type name #${idx + 1}`}
-                          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                        />
-                        <div className="relative w-28 shrink-0">
-                          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
-                            $
-                          </span>
+                  {materialRows.map((row, idx) => {
+                    const hasSizes = row.sizes.length > 0;
+                    const mirrorCents = dollarsInputToCents(row.price);
+                    return (
+                      <div
+                        key={row.key}
+                        className="rounded-md border border-slate-200 bg-[#f7f7f7] p-2.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleMaterialExpanded(row.key)}
+                            aria-expanded={row.expanded}
+                            title={row.expanded ? 'Hide sizes' : 'Show sizes'}
+                            aria-label={`${row.expanded ? 'Hide' : 'Show'} sizes for material #${idx + 1}`}
+                            className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200"
+                          >
+                            {row.expanded ? (
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            )}
+                          </button>
                           <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={row.price}
-                            onChange={(e) => updateMaterialRow(row.key, { price: e.target.value })}
-                            placeholder="0.00"
-                            title="Price per linear ft for this material (CAD)"
-                            aria-label={`Price per linear ft for material #${idx + 1}`}
-                            className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                            type="text"
+                            maxLength={100}
+                            value={row.name}
+                            onChange={(e) => updateMaterialRow(row.key, { name: e.target.value })}
+                            placeholder={`Material #${idx + 1} — e.g. Aluminum`}
+                            aria-label={`Material type name #${idx + 1}`}
+                            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                           />
+                          {hasSizes ? (
+                            <span
+                              title="This price follows the first size"
+                              className="w-28 shrink-0 truncate rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-500"
+                            >
+                              {mirrorCents === null ? '—' : formatCAD(mirrorCents)}
+                            </span>
+                          ) : (
+                            <div className="relative w-28 shrink-0">
+                              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={row.price}
+                                onChange={(e) => updateMaterialRow(row.key, { price: e.target.value })}
+                                placeholder="0.00"
+                                title="Price per linear ft for this material (CAD)"
+                                aria-label={`Price per linear ft for material #${idx + 1}`}
+                                className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                              />
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeMaterialRow(row.key)}
+                            className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            title="Remove material type"
+                            aria-label={`Remove material type #${idx + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeMaterialRow(row.key)}
-                          className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          title="Remove material type"
-                          aria-label={`Remove material type #${idx + 1}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+
+                        <div className="mt-1.5 flex items-center justify-between gap-2 pl-7">
+                          <span className="text-[10px] text-slate-500">
+                            {hasSizes
+                              ? `${row.sizes.length} size${row.sizes.length === 1 ? '' : 's'} · price follows the first size`
+                              : 'No sizes — quoted at the price above.'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addSizeRow(row.key)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded border border-[#084091] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Add size
+                          </button>
+                        </div>
+
+                        {row.expanded && hasSizes && (
+                          <div className="mt-1.5 space-y-1.5 border-t border-slate-200 pt-1.5 pl-7">
+                            {row.sizes.map((size, sizeIdx) => (
+                              <div key={size.key} className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={size.width}
+                                  onChange={(e) =>
+                                    updateSizeRow(row.key, size.key, { width: e.target.value })
+                                  }
+                                  placeholder='Width (in)'
+                                  title="Width (in) — optional"
+                                  aria-label={`Width (in) for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                  className="w-[82px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                                <input
+                                  type="text"
+                                  maxLength={20}
+                                  value={size.gauge}
+                                  onChange={(e) =>
+                                    updateSizeRow(row.key, size.key, { gauge: e.target.value })
+                                  }
+                                  placeholder="Gauge"
+                                  title="Gauge — optional"
+                                  aria-label={`Gauge for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                  className="w-[72px] rounded-md border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={size.length}
+                                  onChange={(e) =>
+                                    updateSizeRow(row.key, size.key, { length: e.target.value })
+                                  }
+                                  placeholder="Length (ft)"
+                                  title="Length (ft) — optional"
+                                  aria-label={`Length (ft) for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                  className="w-[82px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                />
+                                <div className="relative w-[92px]">
+                                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                                    $
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={size.price}
+                                    onChange={(e) =>
+                                      updateSizeRow(row.key, size.key, { price: e.target.value })
+                                    }
+                                    placeholder="0.00"
+                                    title="Price per linear ft for this size (CAD)"
+                                    aria-label={`Price per linear ft for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                    className="w-full rounded-md border border-slate-300 bg-white py-1 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSizeRow(row.key, size.key)}
+                                  className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                  title="Remove size"
+                                  aria-label={`Remove size #${sizeIdx + 1} of material #${idx + 1}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={row.width}
-                          onChange={(e) => updateMaterialRow(row.key, { width: e.target.value })}
-                          placeholder='Width (in)'
-                          title="Width (in) — optional"
-                          aria-label={`Width (in) for material #${idx + 1}`}
-                          className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                        />
-                        <input
-                          type="text"
-                          maxLength={20}
-                          value={row.gauge}
-                          onChange={(e) => updateMaterialRow(row.key, { gauge: e.target.value })}
-                          placeholder="Gauge (ga)"
-                          title="Gauge — optional"
-                          aria-label={`Gauge for material #${idx + 1}`}
-                          className="w-[80px] rounded-md border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={row.length}
-                          onChange={(e) => updateMaterialRow(row.key, { length: e.target.value })}
-                          placeholder="Length (ft)"
-                          title="Length (ft) — optional"
-                          aria-label={`Length (ft) for material #${idx + 1}`}
-                          className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                        />
-                        <span className="text-[10px] text-slate-400">/lf price above · measures optional</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {materialRows.length === 0 && (
                     <p className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500">
                       No material types — the base price below is used for every quote line of this product.
@@ -742,11 +947,14 @@ export function MetalProductsView({
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Each material type has its own price per linear ft and optional measures. They appear
-                  as choices (with prices) in the Customer Quote when this product is selected.
+                  Expand a material type to add its sizes — each size records gauge, width, length, and
+                  its own price. A material type with no sizes quotes at its own price. Both appear as
+                  choices in the Customer Quote.
                 </p>
               </div>
 
+              {/* ADR-0001 retires this field. It stays until a Product with no Material Types
+                  can be saved as a Preview: without it such a product would quote at $0.00. */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Base Price per linear ft (CAD){' '}

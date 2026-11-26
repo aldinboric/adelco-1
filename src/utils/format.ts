@@ -9,6 +9,8 @@ export {
   todayIsoDate,
 } from '../../shared/format.ts';
 export { normalizeHexStrict as normalizeHexPreview } from '../../shared/hex.ts';
+export { formatSizeLabel } from '../../shared/size.ts';
+export type { SizeDimensions } from '../../shared/size.ts';
 
 export function getImageUrl(relPath: string | null | undefined): string | null {
   if (!relPath) return null;

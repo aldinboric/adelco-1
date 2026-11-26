@@ -27,16 +27,29 @@ export interface MetalColor {
   created_at: string;
 }
 
-export interface ProductMaterial {
+export interface ProductMaterialSize {
   id: number;
-  product_id: number;
-  name: string;
+  material_id: number;
   price_per_lf_cents: number;
   width_in: number | null;
   gauge: string | null;
   length_ft: number | null;
   sort_order: number;
   created_at: string;
+}
+
+export interface ProductMaterial {
+  id: number;
+  product_id: number;
+  name: string;
+  price_per_lf_cents: number;
+  /** Legacy Dimension columns: kept for rows written before Sizes existed. */
+  width_in: number | null;
+  gauge: string | null;
+  length_ft: number | null;
+  sort_order: number;
+  created_at: string;
+  sizes: ProductMaterialSize[];
 }
 
 export interface MetalProduct {

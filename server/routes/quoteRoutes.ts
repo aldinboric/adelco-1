@@ -1,8 +1,10 @@
 import { type Request, type Response, Router } from 'express';
+import { resolveCopiedSize } from '../../shared/size.ts';
 import { type AuthenticatedRequest, requireAuth, requirePermission } from '../auth.ts';
 import {
   copyProductImageToQuoteSnapshot,
   getDb,
+  getMaterialsByProductId,
   getNextQuoteNumber,
   type IssuedQuoteItemRow,
   type IssuedQuoteRow,
@@ -291,6 +293,7 @@ export function createQuoteRouter(): Router {
 
       const getProd = db.prepare('SELECT * FROM metal_products WHERE id = ?');
       const getColor = db.prepare('SELECT * FROM metal_colors WHERE id = ?');
+      const materialsByProduct = getMaterialsByProductId(db);
 
       const draftItems = oldItems.map((old) => {
         const prod = old.source_product_id
@@ -303,13 +306,26 @@ export function createQuoteRouter(): Router {
         const productOk = Boolean(prod && prod.is_available === 1);
         const colorOk = Boolean(color && color.is_available === 1);
 
+        // Re-resolve the line's Size against the Material Type's current Sizes: the
+        // matching Size where it still exists, otherwise a `deleted` flag carrying the
+        // old label so the draft asks for a replacement.
+        const materialTypeName = (old.material_type ?? '').trim();
+        const material = prod
+          ? (materialsByProduct.get(prod.id) ?? []).find((m) => m.name === materialTypeName) ?? null
+          : null;
+        const size = resolveCopiedSize(material, {
+          gauge: old.gauge,
+          width_in: old.width_in,
+          length_ft: old.length_ft,
+        });
+
         return {
           product_id: productOk && prod ? prod.id : null,
           material_type: old.material_type ?? '',
+          size_id: size.size_id,
+          sizeIssue: size.sizeIssue,
+          fallbackSizeLabel: size.fallbackSizeLabel,
           color_id: colorOk && color ? color.id : null,
-          width_in: old.width_in ?? null,
-          gauge: old.gauge ?? '',
-          length_ft: old.length_ft ?? null,
           linear_feet: old.linear_feet,
           additional_costs_cents: old.additional_costs_cents ?? 0,
           additional_costs_description: old.additional_costs_description ?? '',

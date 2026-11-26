@@ -49,6 +49,52 @@ function priceOf(source: Priced | null | undefined): number | null {
   return typeof cents === 'number' && Number.isFinite(cents) ? cents : null;
 }
 
+/** A saved Size: its id plus its Dimensions. */
+export interface SavedSize extends SizeDimensions {
+  id: number;
+}
+
+/**
+ * The Size whose rendered label matches the given Dimensions, compared
+ * case-insensitively on the label — how a copied Issued Quote line re-resolves the
+ * Size it was sold at. Null when the Dimensions render no label or no Size matches.
+ */
+export function findSizeByDimensions<T extends SizeDimensions>(
+  sizes: readonly T[],
+  dimensions: SizeDimensions
+): T | null {
+  const label = formatSizeLabel(dimensions);
+  if (!label) return null;
+  const key = label.toLowerCase();
+  return sizes.find((s) => formatSizeLabel(s)?.toLowerCase() === key) ?? null;
+}
+
+/** What a copied Issued Quote line ends up with for its Size. */
+export interface CopiedSizeResolution {
+  size_id: number | null;
+  sizeIssue: 'deleted' | null;
+  fallbackSizeLabel: string | null;
+}
+
+/**
+ * Re-resolves the Size of a copied Issued Quote line against the Material Type's current
+ * Sizes: the matching Size where it still exists, otherwise a `deleted` flag carrying the
+ * old label so the draft asks for a replacement. A Material Type without Sizes — or a line
+ * that recorded no Dimensions — needs no Size and flags nothing.
+ */
+export function resolveCopiedSize(
+  materialType: { sizes: readonly SavedSize[] } | null,
+  oldDimensions: SizeDimensions
+): CopiedSizeResolution {
+  const noSize = (): CopiedSizeResolution => ({ size_id: null, sizeIssue: null, fallbackSizeLabel: null });
+  if (!materialType || materialType.sizes.length === 0) return noSize();
+  const oldLabel = formatSizeLabel(oldDimensions);
+  if (!oldLabel) return noSize();
+  const match = findSizeByDimensions(materialType.sizes, oldDimensions);
+  if (match) return { size_id: match.id, sizeIssue: null, fallbackSizeLabel: null };
+  return { size_id: null, sizeIssue: 'deleted', fallbackSizeLabel: oldLabel };
+}
+
 /**
  * The per-linear-foot Price of a Line: the selected Size's, else its Material Type's,
  * else — for a Product with no Material Types — the legacy Product Price.

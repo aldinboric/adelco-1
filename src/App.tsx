@@ -75,10 +75,10 @@ interface CopyQuoteApiResponse {
   items: Array<{
     product_id: number | null;
     material_type: string;
+    size_id: number | null;
+    sizeIssue: 'deleted' | null;
+    fallbackSizeLabel: string | null;
     color_id: number | null;
-    width_in: number | null;
-    gauge: string;
-    length_ft: number | null;
     linear_feet: number;
     additional_costs_cents: number;
     additional_costs_description: string;
@@ -312,10 +312,10 @@ export default function App() {
         rowKey: `copied-${Date.now()}-${idx}`,
         product_id: item.product_id,
         material_type: item.material_type ?? '',
+        size_id: item.size_id,
+        sizeIssue: item.sizeIssue,
+        fallbackSizeLabel: item.fallbackSizeLabel,
         color_id: item.color_id,
-        width_input: item.width_in != null ? String(item.width_in) : '',
-        gauge_input: item.gauge ?? '',
-        length_input: item.length_ft != null ? String(item.length_ft) : '',
         linear_feet_input: String(item.linear_feet),
         additional_costs_input:
           item.additional_costs_cents > 0 ? centsToDollarsInput(item.additional_costs_cents) : '',

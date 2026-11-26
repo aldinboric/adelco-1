@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { isPreview } from '../../shared/preview.ts';
-import { resolvePricePerLfCents } from '../../shared/size.ts';
+import { formatSizeLabel, resolvePricePerLfCents } from '../../shared/size.ts';
 import type {
   IssuedQuoteDetail,
   MetalColor,
@@ -62,10 +62,8 @@ export function CustomerQuoteView({
       rowKey: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       product_id: null,
       material_type: '',
+      size_id: null,
       color_id: null,
-      width_input: '',
-      gauge_input: '',
-      length_input: '',
       linear_feet_input: '',
       additional_costs_input: '',
       additional_costs_description: '',
@@ -105,6 +103,16 @@ export function CustomerQuoteView({
     const selectedMaterial =
       productMaterials.find((m) => m.name === item.material_type.trim()) ?? null;
 
+    // The Size list is exactly the selected Material Type's saved Sizes; a Size deleted
+    // from the catalog after selection is flagged, the way a deleted Color already is.
+    const materialSizes = selectedMaterial?.sizes ?? [];
+    const selectedSize =
+      item.size_id !== null ? materialSizes.find((s) => s.id === item.size_id) ?? null : null;
+    const hasSizeIssue =
+      Boolean(item.sizeIssue) ||
+      (item.size_id !== null && selectedMaterial !== null && selectedSize === null);
+    const sizeRequired = selectedMaterial !== null && materialSizes.length > 0;
+
     const productAvailable = Boolean(product && product.is_available === 1);
     const productIsPreview = Boolean(product && isPreview(productMaterials));
     const colorAvailable = Boolean(color && color.is_available === 1);
@@ -117,6 +125,7 @@ export function CustomerQuoteView({
     // Base price comes from the shared resolver: selected Size, else Material Type,
     // else the legacy product price (products that carry no material types).
     const basePriceCents = resolvePricePerLfCents({
+      size: selectedSize,
       materialType: selectedMaterial,
       product,
       materialTypes: productMaterials,
@@ -148,6 +157,10 @@ export function CustomerQuoteView({
       color,
       productMaterials,
       selectedMaterial,
+      materialSizes,
+      selectedSize,
+      hasSizeIssue,
+      sizeRequired,
       basePriceCents,
       hasMaterialIssue,
       productAvailable,
@@ -166,7 +179,9 @@ export function CustomerQuoteView({
 
   const grandTotalCents = computedRows.reduce((acc, r) => acc + r.lineTotalCents, 0);
   const totalLinearFeet = computedRows.reduce((acc, r) => acc + r.validLf, 0);
-  const hasAnySelectionError = computedRows.some((r) => r.hasProductIssue || r.hasColorIssue);
+  const hasAnySelectionError = computedRows.some(
+    (r) => r.hasProductIssue || r.hasSizeIssue || r.hasColorIssue
+  );
 
   const anyRowHasColorSelected = computedRows.some(
     (r) => (r.colorAvailable && r.productAvailable) || r.hasColorIssue
@@ -189,6 +204,18 @@ export function CustomerQuoteView({
         setValidationError(`Line #${i + 1}: Please select a Material Type.`);
         return null;
       }
+      if (r.hasSizeIssue) {
+        setValidationError(
+          `Line #${i + 1}: Size "${r.item.fallbackSizeLabel ?? `#${r.item.size_id}`}" is no longer available — please select a replacement.`
+        );
+        return null;
+      }
+      if (r.sizeRequired && r.item.size_id === null) {
+        setValidationError(
+          `Line #${i + 1}: Please select a Size — material type "${r.item.material_type.trim()}" has sizes.`
+        );
+        return null;
+      }
       if (r.hasColorIssue || !r.colorAvailable || !r.item.color_id) {
         setValidationError(`Line #${i + 1}: Please select an available color.`);
         return null;
@@ -203,25 +230,11 @@ export function CustomerQuoteView({
         );
         return null;
       }
-      const widthRaw = r.item.width_input.trim();
-      const lengthRaw = r.item.length_input.trim();
-      const widthNum = Number(widthRaw);
-      const lengthNum = Number(lengthRaw);
-      if (widthRaw !== '' && (!Number.isFinite(widthNum) || widthNum <= 0)) {
-        setValidationError(`Line #${i + 1}: Width (in) must be a positive number.`);
-        return null;
-      }
-      if (lengthRaw !== '' && (!Number.isFinite(lengthNum) || lengthNum <= 0)) {
-        setValidationError(`Line #${i + 1}: Length (ft) must be a positive number.`);
-        return null;
-      }
       payloadItems.push({
         product_id: r.item.product_id,
         material_type: r.item.material_type.trim() || null,
+        size_id: r.item.size_id,
         color_id: r.item.color_id,
-        width_in: widthRaw !== '' ? widthNum : null,
-        gauge: r.item.gauge_input.trim() || null,
-        length_ft: lengthRaw !== '' ? lengthNum : null,
         linear_feet: r.validLf,
         additional_costs_cents: r.validAddCostsCents,
         additional_costs_description: r.item.additional_costs_description.trim() || null,
@@ -427,7 +440,7 @@ export function CustomerQuoteView({
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <h3 className="text-base font-semibold text-slate-900">Start a Customer Quote</h3>
             <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">
-              Add one or more products from your catalog. For each item, first choose the product, then choose its color, and finally enter the linear feet to calculate the total price in CAD.
+              Add one or more products from your catalog. For each item, choose the product, then its material type, size, and color, and finally enter the linear feet to calculate the total price in CAD.
             </p>
             <button
               type="button"
@@ -460,8 +473,8 @@ export function CustomerQuoteView({
                     <th className="px-4 py-3 w-12 text-left">#</th>
                     <th className="px-4 py-3 min-w-[260px] text-left">Product</th>
                     <th className="px-4 py-3 min-w-[150px] text-left">Material Type</th>
+                    <th className="px-4 py-3 min-w-[190px] text-left">Size</th>
                     <th className="px-4 py-3 min-w-[210px] text-left">Color</th>
-                    <th className="px-4 py-3 min-w-[230px] text-left">Measures</th>
                     {anyRowHasColorSelected && (
                       <>
                         <th className="px-4 py-3 w-36 text-right">Linear Feet</th>
@@ -507,6 +520,9 @@ export function CustomerQuoteView({
                                   product_id: val,
                                   productIssue: null,
                                   material_type: '',
+                                  size_id: null,
+                                  sizeIssue: null,
+                                  fallbackSizeLabel: null,
                                 });
                               }}
                               className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
@@ -576,7 +592,12 @@ export function CustomerQuoteView({
                               <select
                                 value={item.material_type}
                                 onChange={(e) =>
-                                  updateRow(item.rowKey, { material_type: e.target.value })
+                                  updateRow(item.rowKey, {
+                                    material_type: e.target.value,
+                                    size_id: null,
+                                    sizeIssue: null,
+                                    fallbackSizeLabel: null,
+                                  })
                                 }
                                 className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
                                   row.hasMaterialIssue
@@ -594,6 +615,78 @@ export function CustomerQuoteView({
                             ) : (
                               <span className="block text-xs text-slate-400">
                                 No materials defined for this product
+                              </span>
+                            )
+                          ) : (
+                            <span className="block text-xs text-slate-400">Select product first</span>
+                          )}
+                        </td>
+
+                        {/* Step 1c: Size selection — exactly the sizes saved for the selected
+                            material type. Required when the type has sizes; a type without
+                            sizes shows "No sizes" and quotes at its general price. */}
+                        <td
+                          className={`px-4 py-3 align-top text-left ${
+                            row.hasSizeIssue ? 'bg-red-50' : ''
+                          }`}
+                        >
+                          {showColorStage ? (
+                            row.selectedMaterial ? (
+                              row.materialSizes.length > 0 ? (
+                                <div className="space-y-2">
+                                  <select
+                                    value={item.size_id ?? ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value ? Number(e.target.value) : null;
+                                      const size =
+                                        val !== null
+                                          ? row.materialSizes.find((s) => s.id === val) ?? null
+                                          : null;
+                                      updateRow(item.rowKey, {
+                                        size_id: val,
+                                        sizeIssue: null,
+                                        fallbackSizeLabel: size ? formatSizeLabel(size) : null,
+                                      });
+                                    }}
+                                    className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                      row.hasSizeIssue
+                                        ? 'border-red-500 bg-white text-red-800'
+                                        : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                    }`}
+                                  >
+                                    <option value="">-- Select size --</option>
+                                    {row.materialSizes.map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        {formatSizeLabel(s) ?? `#${s.id}`}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  {row.hasSizeIssue && (
+                                    <div className="text-[11px] font-semibold text-red-700">
+                                      Size &ldquo;
+                                      {item.fallbackSizeLabel ?? `#${item.size_id}`}
+                                      &rdquo; no longer available, please select a new one.
+                                    </div>
+                                  )}
+
+                                  {row.selectedSize && !row.hasSizeIssue && (
+                                    <div className="flex items-center gap-2 pt-0.5">
+                                      <span className="text-xs font-medium text-slate-800">
+                                        {formatSizeLabel(row.selectedSize)}
+                                      </span>
+                                      <span className="font-mono text-[11px] text-slate-500">
+                                        ({formatCAD(row.selectedSize.price_per_lf_cents)}/lf)
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="block text-xs text-slate-400">No sizes</span>
+                              )
+                            ) : (
+                              <span className="block text-xs text-slate-400">
+                                Select material type first
                               </span>
                             )
                           ) : (
@@ -665,74 +758,6 @@ export function CustomerQuoteView({
                             <span className="block text-xs text-slate-400">
                               Select product first
                             </span>
-                          )}
-                        </td>
-
-                        {/* Step 2b: Measures — Width (in), Gauge (ga), Length (ft).
-                            Datalists offer the saved measures of the selected material type;
-                            custom values are allowed and apply only to this quote. */}
-                        <td className="px-4 py-3 align-top text-left">
-                          {showColorStage ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <datalist id={`dl-width-${item.rowKey}`}>
-                                {row.selectedMaterial?.width_in != null && (
-                                  <option value={row.selectedMaterial.width_in} />
-                                )}
-                              </datalist>
-                              <datalist id={`dl-gauge-${item.rowKey}`}>
-                                {row.selectedMaterial?.gauge && (
-                                  <option value={row.selectedMaterial.gauge} />
-                                )}
-                              </datalist>
-                              <datalist id={`dl-length-${item.rowKey}`}>
-                                {row.selectedMaterial?.length_ft != null && (
-                                  <option value={row.selectedMaterial.length_ft} />
-                                )}
-                              </datalist>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                list={`dl-width-${item.rowKey}`}
-                                value={item.width_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { width_input: e.target.value })
-                                }
-                                placeholder='Width (in)'
-                                title="Width (in) — saved value available for the selected material type"
-                                aria-label="Width (in)"
-                                className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
-                              <input
-                                type="text"
-                                maxLength={20}
-                                list={`dl-gauge-${item.rowKey}`}
-                                value={item.gauge_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { gauge_input: e.target.value })
-                                }
-                                placeholder="Gauge (ga)"
-                                title="Gauge (ga) — saved value available for the selected material type"
-                                aria-label="Gauge (ga)"
-                                className="w-[86px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                list={`dl-length-${item.rowKey}`}
-                                value={item.length_input}
-                                onChange={(e) =>
-                                  updateRow(item.rowKey, { length_input: e.target.value })
-                                }
-                                placeholder="Length (ft)"
-                                title="Length (ft) — saved value available for the selected material type"
-                                aria-label="Length (ft)"
-                                className="w-[92px] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                              />
-                            </div>
-                          ) : (
-                            <span className="block text-xs text-slate-400">Select product first</span>
                           )}
                         </td>
 

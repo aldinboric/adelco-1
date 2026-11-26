@@ -68,17 +68,17 @@ export interface QuoteDraftItem {
   rowKey: string;
   product_id: number | null;
   material_type: string;
+  size_id: number | null;
   color_id: number | null;
-  width_input: string;
-  gauge_input: string;
-  length_input: string;
   linear_feet_input: string;
   additional_costs_input: string;
   additional_costs_description: string;
   note_input: string;
   productIssue?: 'unavailable' | 'deleted' | null;
+  sizeIssue?: 'deleted' | null;
   colorIssue?: 'unavailable' | 'deleted' | null;
   fallbackProductName?: string;
+  fallbackSizeLabel?: string | null;
   fallbackColorName?: string;
   fallbackColorHex?: string;
 }
@@ -95,10 +95,8 @@ export interface QuoteDraftState {
 export interface QuotePayloadItem {
   product_id: number;
   material_type: string | null;
+  size_id: number | null;
   color_id: number;
-  width_in: number | null;
-  gauge: string | null;
-  length_ft: number | null;
   linear_feet: number;
   additional_costs_cents: number;
   additional_costs_description: string | null;

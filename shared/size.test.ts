@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatSizeLabel, resolvePricePerLfCents } from './size.ts';
+import { findSizeByDimensions, formatSizeLabel, resolveCopiedSize, resolvePricePerLfCents } from './size.ts';
 
 describe('formatSizeLabel', () => {
   it('renders gauge, width, and length as one Size label', () => {
@@ -63,5 +63,79 @@ describe('resolvePricePerLfCents', () => {
     expect(
       resolvePricePerLfCents({ product: null, materialType: null, size: null })
     ).toBeNull();
+  });
+});
+
+describe('findSizeByDimensions', () => {
+  const sizes = [
+    { id: 1, gauge: '26', width_in: 5, length_ft: 5, price_per_lf_cents: 500 },
+    { id: 2, gauge: '26', width_in: 5, length_ft: 10, price_per_lf_cents: 700 },
+    { id: 3, gauge: null, width_in: 6, length_ft: null, price_per_lf_cents: 800 },
+  ];
+
+  it('finds the Size whose rendered label matches the given Dimensions', () => {
+    expect(findSizeByDimensions(sizes, { gauge: '26', width_in: 5, length_ft: 5 })?.id).toBe(1);
+    expect(findSizeByDimensions(sizes, { gauge: '26', width_in: 5, length_ft: 10 })?.id).toBe(2);
+    expect(findSizeByDimensions(sizes, { width_in: 6 })?.id).toBe(3);
+  });
+
+  it('matches a bare numeric gauge against its suffixed label form, case-insensitively', () => {
+    expect(findSizeByDimensions([{ id: 9, gauge: '26 GA' }], { gauge: '26' })?.id).toBe(9);
+    expect(findSizeByDimensions(sizes, { gauge: '26 Ga', width_in: 5, length_ft: 5 })?.id).toBe(1);
+  });
+
+  it('returns null when the Dimensions render no label or no Size matches', () => {
+    expect(findSizeByDimensions(sizes, {})).toBeNull();
+    expect(findSizeByDimensions(sizes, { gauge: '24', width_in: 5, length_ft: 5 })).toBeNull();
+    expect(findSizeByDimensions([], { gauge: '26', width_in: 5, length_ft: 5 })).toBeNull();
+  });
+});
+
+describe('resolveCopiedSize', () => {
+  const materialType = {
+    sizes: [
+      { id: 1, gauge: '26', width_in: 5, length_ft: 5, price_per_lf_cents: 500 },
+      { id: 2, gauge: '26', width_in: 5, length_ft: 10, price_per_lf_cents: 700 },
+    ],
+  };
+
+  it('re-resolves a copied line to the Size that still exists', () => {
+    expect(resolveCopiedSize(materialType, { gauge: '26', width_in: 5, length_ft: 10 })).toEqual({
+      size_id: 2,
+      sizeIssue: null,
+      fallbackSizeLabel: null,
+    });
+  });
+
+  it('flags the line as deleted when its Size no longer exists, keeping the old label', () => {
+    expect(resolveCopiedSize(materialType, { gauge: '24', width_in: 4, length_ft: 8 })).toEqual({
+      size_id: null,
+      sizeIssue: 'deleted',
+      fallbackSizeLabel: '24 ga 4" x 8\'',
+    });
+  });
+
+  it('needs no Size when the Material Type has none, and flags nothing', () => {
+    expect(resolveCopiedSize({ sizes: [] }, { gauge: '26', width_in: 5, length_ft: 5 })).toEqual({
+      size_id: null,
+      sizeIssue: null,
+      fallbackSizeLabel: null,
+    });
+  });
+
+  it('needs no Size when the copied line recorded no Dimensions at all', () => {
+    expect(resolveCopiedSize(materialType, { gauge: null, width_in: null, length_ft: null })).toEqual({
+      size_id: null,
+      sizeIssue: null,
+      fallbackSizeLabel: null,
+    });
+  });
+
+  it('resolves nothing when the Material Type itself is gone', () => {
+    expect(resolveCopiedSize(null, { gauge: '26', width_in: 5, length_ft: 5 })).toEqual({
+      size_id: null,
+      sizeIssue: null,
+      fallbackSizeLabel: null,
+    });
   });
 });

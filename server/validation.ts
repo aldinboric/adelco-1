@@ -163,7 +163,7 @@ export function validateAndBuildQuoteLines(
     // a Product without any is a Preview and was refused above.
     const productMaterials = db
       .prepare('SELECT * FROM product_materials WHERE product_id = ? ORDER BY sort_order ASC, id ASC')
-      .all(product.id) as Array<{ name: string; price_per_lf_cents: number }>;
+      .all(product.id) as Array<{ id: number; name: string; price_per_lf_cents: number }>;
 
     // A Product with no Material Types is a Preview: saved for completion later, and
     // never sold, so no Price it carries can be quoted from.
@@ -185,29 +185,49 @@ export function validateAndBuildQuoteLines(
       );
     }
 
-    // Measures (optional): Width (in), Gauge (ga), Length (ft)
+    // Size: required whenever the selected Material Type has Sizes, and must be one of
+    // them — a Line is never priced from a Size the catalog does not sell. The issued
+    // line stores the Size's Dimensions (storage is unchanged: the existing dimension
+    // columns are filled from the selected Size, and the label is re-derived on render).
+    const materialSizes = db
+      .prepare('SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC')
+      .all(selectedMaterial.id) as Array<{
+      id: number;
+      price_per_lf_cents: number;
+      width_in: number | null;
+      gauge: string | null;
+      length_ft: number | null;
+    }>;
+    const sizeId = parsePositiveInt(item.size_id);
+    let selectedSize: (typeof materialSizes)[number] | null = null;
     let widthIn: number | null = null;
-    if (item.width_in !== undefined && item.width_in !== null && item.width_in !== '') {
-      const w = Number(item.width_in);
-      if (!Number.isFinite(w) || w <= 0 || w > MAX_LINEAR_FEET) {
-        throw new ValidationError('Width (in) must be a positive number.');
-      }
-      widthIn = w;
-    }
+    let gauge: string | null = null;
     let lengthFt: number | null = null;
-    if (item.length_ft !== undefined && item.length_ft !== null && item.length_ft !== '') {
-      const l = Number(item.length_ft);
-      if (!Number.isFinite(l) || l <= 0 || l > MAX_LINEAR_FEET) {
-        throw new ValidationError('Length (ft) must be a positive number.');
+    if (materialSizes.length > 0) {
+      if (!sizeId) {
+        throw new ValidationError(
+          `Every quote line for "${product.name}" whose Material Type "${rawMaterialType}" has sizes must have a Size selected.`
+        );
       }
-      lengthFt = l;
+      selectedSize = materialSizes.find((s) => s.id === sizeId) ?? null;
+      if (!selectedSize) {
+        throw new ValidationError(
+          `Size #${sizeId} is not defined for Material Type "${rawMaterialType}" of product "${product.name}".`
+        );
+      }
+      widthIn = selectedSize.width_in;
+      gauge = selectedSize.gauge;
+      lengthFt = selectedSize.length_ft;
+    } else if (sizeId) {
+      throw new ValidationError(
+        `Material Type "${rawMaterialType}" of product "${product.name}" has no sizes.`
+      );
     }
-    const gauge =
-      typeof item.gauge === 'string' && item.gauge.trim() ? item.gauge.trim().slice(0, 20) : null;
 
     // Base price is resolved in the shared module: selected Size, else Material Type,
     // else the legacy product price (products that carry no material types).
     const basePriceCents = resolvePricePerLfCents({
+      size: selectedSize,
       materialType: selectedMaterial,
       product,
       materialTypes: productMaterials,

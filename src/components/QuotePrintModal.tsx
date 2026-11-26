@@ -1,4 +1,5 @@
 import { Copy, FileSpreadsheet, FileText, Printer, X } from 'lucide-react';
+import { formatMaterialSizeLine } from '../../shared/size.ts';
 import type { IssuedQuoteDetail } from '../types';
 import { downloadProtectedFile } from '../utils/api';
 import { formatCAD } from '../utils/format';
@@ -23,6 +24,13 @@ export function QuotePrintModal({
 }: QuotePrintModalProps) {
   if (!detail) return null;
   const { quote, items } = detail;
+
+  // The same detail line the quote PDF prints under the Product name: the Material Type
+  // with the Size's shared label beside it in the same line.
+  const rows = items.map((item) => ({
+    item,
+    detailLine: formatMaterialSizeLine(item.material_type, item),
+  }));
 
   return (
     // The overlay is the scroll container; the inner wrapper uses min-h-full so the
@@ -163,7 +171,7 @@ export function QuotePrintModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {items.map((item, idx) => (
+                {rows.map(({ item, detailLine }, idx) => (
                   <tr
                     key={item.id}
                     className={`divide-x divide-slate-200 ${idx % 2 === 1 ? 'bg-[#f7f7f7]/70' : 'bg-white'}`}
@@ -178,7 +186,10 @@ export function QuotePrintModal({
                       </div>
                     </td>
                     <td className="px-3.5 py-2.5 text-left font-medium text-slate-900">
-                      {item.product_name}
+                      <div>{item.product_name}</div>
+                      {detailLine && (
+                        <div className="mt-0.5 text-[11px] font-normal text-[#084091]">{detailLine}</div>
+                      )}
                     </td>
                     <td className="px-3.5 py-2.5 text-left">
                       <div className="flex items-center gap-2">

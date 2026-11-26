@@ -11,13 +11,10 @@ import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
-import {
-  formatCAD,
-  formatGaugeLabel,
-  formatMaterialMeasures,
-  formatMeasureDimensions,
-} from '../shared/format.ts';
+import { formatCAD } from '../shared/format.ts';
 import { hexToArgb, normalizeHexDisplay } from '../shared/hex.ts';
+import { sizesColumnLines } from '../shared/sizeCounts.ts';
+import { formatMaterialSizeLine, formatSizeLabel } from '../shared/size.ts';
 import {
   type IssuedQuoteRow,
   type MetalColorRow,
@@ -154,14 +151,9 @@ function productMaterialNames(p: MetalProductWithMaterials): string[] {
     .filter(Boolean);
 }
 
-/** Per-material measures lines, e.g. "Aluminum: 36\" · 26 Ga · 10'". */
+/** Per-material size-count lines, matching the Products table's Sizes column: "Aluminum · 5 sizes". */
 function productMeasuresText(p: MetalProductWithMaterials): string {
-  if (p.materials.length === 0) return '—';
-  const lines = p.materials.map((m) => {
-    const measures = formatMaterialMeasures(m);
-    return measures ? `${m.name}: ${measures}` : m.name;
-  });
-  return lines.join('\n');
+  return sizesColumnLines(p.materials).join('\n');
 }
 
 /** Per-material price lines, e.g. "Aluminum: $5.10"; falls back to the product price. */
@@ -1178,10 +1170,8 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     const rowIdx = headerRowIdx + 1 + idx;
     Row.setHeight(ws, rowIdx, 40);
 
-    const measuresText =
-      [formatGaugeLabel(item.gauge), formatMeasureDimensions(item.width_in, item.length_ft)]
-        .filter(Boolean)
-        .join(' · ') || '—';
+    // The one shared Size label fills the measures column; a Line without a Size keeps the dash.
+    const measuresText = formatSizeLabel(item) ?? '—';
 
     const values = hasAddCostDesc
       ? [
@@ -1338,14 +1328,11 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
       headerPadX: 8,
       headerFontSize: 8,
       cells: quote.items.flatMap((it) => {
-        const gaugeLabel = formatGaugeLabel(it.gauge);
-        const materialLabel = it.material_type?.trim() || null;
-        const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join('. ');
-        const measuresLabel = formatMeasureDimensions(it.width_in, it.length_ft);
+        // The Size prints beside the Material Type in the same line, not on its own.
+        const detailLine = formatMaterialSizeLine(it.material_type, it);
         return [
           { text: it.product_name, bold: true, fontSize: 8.3 },
           ...(detailLine ? [{ text: detailLine, fontSize: 7.6 }] : []),
-          ...(measuresLabel ? [{ text: measuresLabel, bold: true, fontSize: 7.6 }] : []),
           { text: `(${formatCAD(it.product_price_per_lf_cents)}/lf)`, fontSize: 7.6 },
         ];
       }),
@@ -1482,10 +1469,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     doc.restore();
 
     const prodTextW = cols[1].w - 44;
-    const gaugeLabel = formatGaugeLabel(item.gauge);
-    const materialLabel = item.material_type?.trim() || null;
-    const measuresLabel = formatMeasureDimensions(item.width_in, item.length_ft);
-    const detailLine = [gaugeLabel, materialLabel].filter(Boolean).join('. ');
+    // The Size prints beside the Material Type in the same line, not on its own.
+    const detailLine = formatMaterialSizeLine(item.material_type, item);
     const prodPriceText = `(${formatCAD(item.product_price_per_lf_cents)}/lf)`;
 
     doc.font('Helvetica-Bold').fontSize(8.3);
@@ -1495,16 +1480,8 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
     );
     doc.font('Helvetica').fontSize(7.6);
     const detailH = detailLine ? measurePdfVisualTextHeight(doc, detailLine, { width: prodTextW }) : 0;
-    const measuresH = measuresLabel
-      ? measurePdfVisualTextHeight(doc, measuresLabel, { width: prodTextW })
-      : 0;
     const prodPriceH = measurePdfVisualTextHeight(doc, prodPriceText, { width: prodTextW });
-    const prodStackH =
-      prodNameH +
-      (detailLine ? 3 + detailH : 0) +
-      (measuresLabel ? 3 + measuresH : 0) +
-      3 +
-      prodPriceH;
+    const prodStackH = prodNameH + (detailLine ? 3 + detailH : 0) + 3 + prodPriceH;
     let prodCursorY = y + Math.max(3, (rowH - prodStackH) / 2);
 
     doc.font('Helvetica-Bold').fontSize(8.3).fillColor(TEXT_DARK);
@@ -1522,15 +1499,6 @@ export async function buildSingleQuotePdf(quote: ExportQuotePayload): Promise<Bu
         ellipsis: true,
       });
       prodCursorY += detailH + 3;
-    }
-    if (measuresLabel) {
-      doc.font('Helvetica-Bold').fontSize(7.6).fillColor(TEXT_DARK);
-      doc.text(measuresLabel, cols[1].x + 40, prodCursorY, {
-        width: prodTextW,
-        height: measuresH + 2,
-        ellipsis: true,
-      });
-      prodCursorY += measuresH + 3;
     }
     doc.font('Helvetica').fontSize(7.6).fillColor(TEXT_MUTED);
     doc.text(prodPriceText, cols[1].x + 40, prodCursorY, {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findSizeByDimensions, formatSizeLabel, resolveCopiedSize, resolvePricePerLfCents } from './size.ts';
+import {
+  findSizeByDimensions,
+  formatMaterialSizeLine,
+  formatSizeLabel,
+  resolveCopiedSize,
+  resolvePricePerLfCents,
+} from './size.ts';
 
 describe('formatSizeLabel', () => {
   it('renders gauge, width, and length as one Size label', () => {
@@ -20,6 +26,29 @@ describe('formatSizeLabel', () => {
   it('has no label when the Size records no Dimensions', () => {
     expect(formatSizeLabel({})).toBeNull();
     expect(formatSizeLabel({ gauge: '  ', width_in: null, length_ft: null })).toBeNull();
+  });
+});
+
+describe('formatMaterialSizeLine', () => {
+  it('prints the Size beside the Material Type in the same line', () => {
+    expect(formatMaterialSizeLine('Aluminum', { gauge: '26', width_in: 5, length_ft: 5 })).toBe(
+      `Aluminum (26 ga 5" x 5')`
+    );
+  });
+
+  it('omits missing Dimensions instead of leaving stray punctuation', () => {
+    expect(formatMaterialSizeLine('Aluminum', { width_in: 5 })).toBe(`Aluminum (5")`);
+    expect(formatMaterialSizeLine('Aluminum', { gauge: '26' })).toBe('Aluminum (26 ga)');
+  });
+
+  it('leaves no empty parentheses when the Line records no Size', () => {
+    expect(formatMaterialSizeLine('Aluminum', {})).toBe('Aluminum');
+    expect(formatMaterialSizeLine('  ', { gauge: null, width_in: null, length_ft: null })).toBeNull();
+  });
+
+  it('keeps the Size label alone when the Line records no Material Type', () => {
+    expect(formatMaterialSizeLine(null, { gauge: '26', width_in: 5, length_ft: 5 })).toBe(`26 ga 5" x 5'`);
+    expect(formatMaterialSizeLine('', { length_ft: 10 })).toBe(`10'`);
   });
 });
 

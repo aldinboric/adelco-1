@@ -32,6 +32,23 @@ export function formatSizeLabel(size: SizeDimensions): string | null {
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
+/**
+ * The detail line under a Line's Product name wherever a quote is printed:
+ * the Material Type with the Size's shared label beside it in the same line —
+ * `Aluminum (26 ga 5" x 5')`. A Line without a Size keeps only its Material
+ * Type (no empty parentheses), one without a Material Type keeps only the Size
+ * label, and one with neither has no detail line at all.
+ */
+export function formatMaterialSizeLine(
+  materialType: string | null | undefined,
+  size: SizeDimensions
+): string | null {
+  const material = materialType?.trim() || null;
+  const sizeLabel = formatSizeLabel(size);
+  if (material && sizeLabel) return `${material} (${sizeLabel})`;
+  return material ?? sizeLabel;
+}
+
 /** What a Line has selected to price itself from. */
 export interface LinePriceSources {
   /** The Size selected on the Line, when its Material Type has any. */

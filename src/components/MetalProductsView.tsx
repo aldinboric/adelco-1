@@ -12,17 +12,17 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useReorderableList } from '../hooks/useReorderableList';
-import type { MetalProduct, ProductMaterial } from '../types';
+import type { MetalProduct } from '../types';
 import { apiFetch } from '../utils/api';
 import {
   centsToDollarsInput,
   dollarsInputToCents,
   formatCAD,
-  formatMaterialMeasures,
   formatSizeLabel,
   getImageUrl,
   type SizeDimensions,
 } from '../utils/format';
+import { sizesColumnLines, sizeCountLabel } from '../utils/sizeCounts';
 import { ConfirmModal } from './ConfirmModal';
 import { ExportButtons } from './ExportButtons';
 import { ProductThumbnail } from './ProductThumbnail';
@@ -146,64 +146,14 @@ function validateSizes(
   return { ok: true, sizes };
 }
 
-// Material names for a product, falling back to the legacy comma-separated column.
-function materialNamesOf(p: MetalProduct): string[] {
-  const mats = p.materials ?? [];
-  if (mats.length > 0) return mats.map((m) => m.name);
-  return (p.material_type ?? '')
-    .split(',')
-    .map((m) => m.trim())
-    .filter(Boolean);
-}
-
-/** Material-type chips cell. */
-function MaterialChips({ product }: { product: MetalProduct }) {
-  const names = materialNamesOf(product);
-  if (names.length === 0) return <span className="text-slate-300">—</span>;
+/** Sizes cell: one line per Material Type, e.g. "Aluminum · 5 sizes" / "Wood · no sizes". */
+function SizesCell({ product }: { product: MetalProduct }) {
+  // A tall Product would otherwise stretch the row, so the cell scrolls past a few lines.
   return (
-    <span className="inline-flex flex-wrap gap-1">
-      {names.map((m) => (
-        <span
-          key={m}
-          className="inline-flex items-center rounded-full border border-[#084091]/20 bg-[#084091]/5 px-2 py-0.5 text-[11px] font-medium text-[#084091]"
-        >
-          {m}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** Per-material measures lines cell, e.g. "Aluminum: 26 ga 5\" x 5' · 26 ga 5\" x 10'". */
-function MaterialMeasuresCell({ product }: { product: MetalProduct }) {
-  const mats = product.materials ?? [];
-  if (mats.length === 0) return <span className="text-slate-300">—</span>;
-  return (
-    <span className="block space-y-0.5">
-      {mats.map((m) => {
-        const sizeLabels = (m.sizes ?? [])
-          .map((s) => formatSizeLabel(s))
-          .filter((label): label is string => Boolean(label));
-        const label = sizeLabels.length > 0 ? sizeLabels.join(' · ') : formatMaterialMeasures(m);
-        return (
-          <span key={m.id} className="block">
-            {label ? `${m.name}: ${label}` : m.name}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-/** Per-material price lines cell; falls back to the product-level price. */
-function MaterialPricesCell({ product }: { product: MetalProduct }) {
-  const mats = product.materials ?? [];
-  if (mats.length === 0) return <>{formatCAD(product.price_per_lf_cents)}</>;
-  return (
-    <span className="block space-y-0.5">
-      {mats.map((m: ProductMaterial) => (
-        <span key={m.id} className="block">
-          {m.name}: {formatCAD(m.price_per_lf_cents)}
+    <span className="block max-h-24 space-y-0.5 overflow-y-auto">
+      {sizesColumnLines(product.materials).map((line) => (
+        <span key={line} className="block">
+          {line}
         </span>
       ))}
     </span>
@@ -515,7 +465,7 @@ export function MetalProductsView({
           <span aria-hidden="true">·</span>
           <span>{availableCount} available for new quotes</span>
           <span aria-hidden="true">·</span>
-          <span>Prices in CAD / linear ft (per material type when defined)</span>
+          <span>Prices per linear ft live on each size, falling back to its material type</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -539,7 +489,7 @@ export function MetalProductsView({
         </div>
       </div>
 
-      {/* Table (ID, Product, Price per linear ft, Status, Actions — NO Color column) */}
+      {/* Table (ID, Product, Sizes, Status, Actions — prices stay out of Sizes) */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {loading ? (
           <TableSkeleton rows={4} cells={['h-4 w-8', 'h-10 w-10', 'h-4 w-56']} />
@@ -571,9 +521,7 @@ export function MetalProductsView({
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">#</th>
                   <th className="px-4 py-3 text-left">Product</th>
-                  <th className="px-4 py-3 w-44 text-left">Material Type</th>
-                  <th className="px-4 py-3 w-52 text-left">Measures</th>
-                  <th className="px-4 py-3 w-48 text-right">Price per linear ft</th>
+                  <th className="px-4 py-3 w-56 text-left">Sizes</th>
                   <th className="px-4 py-3 w-28 text-left">Status</th>
                   {canManage && <th className="px-4 py-3 w-52 text-right">Actions</th>}
                 </tr>
@@ -642,25 +590,11 @@ export function MetalProductsView({
                         </div>
                       </td>
                       <td
-                        className={`px-4 py-2 text-left text-xs ${
+                        className={`px-4 py-2 text-left text-xs leading-relaxed ${
                           unavailable ? 'text-slate-400' : 'text-slate-700'
                         }`}
                       >
-                        <MaterialChips product={product} />
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-left text-[11px] leading-relaxed ${
-                          unavailable ? 'text-slate-400' : 'text-slate-600'
-                        }`}
-                      >
-                        <MaterialMeasuresCell product={product} />
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-right font-mono text-xs font-medium tabular-nums ${
-                          unavailable ? 'text-slate-400' : 'text-slate-900'
-                        }`}
-                      >
-                        <MaterialPricesCell product={product} />
+                        <SizesCell product={product} />
                       </td>
                       <td className="px-4 py-2 text-left text-xs font-medium">
                         {unavailable ? (
@@ -851,7 +785,7 @@ export function MetalProductsView({
                         <div className="mt-1.5 flex items-center justify-between gap-2 pl-7">
                           <span className="text-[10px] text-slate-500">
                             {hasSizes
-                              ? `${row.sizes.length} size${row.sizes.length === 1 ? '' : 's'} · price follows the first size`
+                              ? `${sizeCountLabel(row.sizes.length)} · price follows the first size`
                               : 'No sizes — quoted at the price above.'}
                           </span>
                           <button

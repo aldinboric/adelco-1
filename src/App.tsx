@@ -45,6 +45,8 @@ import type {
   IssuedQuoteDetail,
   MetalColor,
   MetalProduct,
+  ProductMaterial,
+  ProductMaterialSize,
   QuoteDraftItem,
   QuoteDraftState,
   ToastMessage,
@@ -300,6 +302,28 @@ export default function App() {
     setActivePrintDetail(detail);
   };
 
+  // A Size saved from inside the quote lands in the local catalog state at once, so the
+  // line that added it prices and selects it without a reload.
+  const handleMaterialSizeAdded = useCallback(
+    (
+      productId: number,
+      materialId: number,
+      added: { size: ProductMaterialSize; material: ProductMaterial }
+    ) => {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id !== productId
+            ? p
+            : {
+                ...p,
+                materials: p.materials.map((m) => (m.id === materialId ? added.material : m)),
+              }
+        )
+      );
+    },
+    []
+  );
+
   const handleCopyToNewQuote = async (quoteId: number) => {
     try {
       const res = await apiFetch(`/api/quotes/${quoteId}/copy`, { method: 'POST' });
@@ -528,6 +552,8 @@ export default function App() {
                     products={products}
                     colors={colors}
                     canExport={canExport}
+                    canManageCatalog={canManageProducts}
+                    onMaterialSizeAdded={handleMaterialSizeAdded}
                     onQuoteIssued={handleQuoteIssued}
                     onClearDraftConfirmed={() => setConfirmClearDraftOpen(true)}
                     onNotify={notify}

@@ -19,11 +19,10 @@ import {
   centsToDollarsInput,
   dollarsInputToCents,
   formatCAD,
-  formatSizeLabel,
   getImageUrl,
-  type SizeDimensions,
 } from '../utils/format';
 import { sizesColumnLines, sizeCountLabel } from '../utils/sizeCounts';
+import { validateSizeRow, type SizeFormInput, type SizePayload } from '../utils/sizeValidation';
 import { ConfirmModal } from './ConfirmModal';
 import { ExportButtons } from './ExportButtons';
 import { ProductThumbnail } from './ProductThumbnail';
@@ -40,12 +39,8 @@ interface MetalProductsViewProps {
 }
 
 // One editable Size row inside a Material Type in the Add/Edit Product modal.
-interface SizeRowDraft {
+interface SizeRowDraft extends SizeFormInput {
   key: string;
-  price: string;
-  width: string;
-  gauge: string;
-  length: string;
 }
 
 // One editable Material Type row. Its own price is only editable while it has no
@@ -57,14 +52,6 @@ interface MaterialRowDraft {
   sizes: SizeRowDraft[];
   expanded: boolean;
 }
-
-/** A Size as the product endpoints receive it. */
-interface SizePayload extends SizeDimensions {
-  price_per_lf_cents: number;
-}
-
-// Same sanity ceiling the server applies to a Dimension's value.
-const MAX_DIMENSION_VALUE = 1_000_000;
 
 /** Says why a Preview cannot be quoted, for the Status cell's tooltip. */
 const PREVIEW_STATUS_HINT = 'No material types yet — this product cannot be quoted';
@@ -111,46 +98,9 @@ function validateSizes(
   const sizes: SizePayload[] = [];
   const seenLabels = new Set<string>();
   for (const [index, row] of rows.entries()) {
-    const label = `Size #${index + 1} of "${materialName}"`;
-    const priceCents = dollarsInputToCents(row.price);
-    if (priceCents === null) {
-      return { ok: false, error: `${label} needs a valid non-negative price per linear ft.` };
-    }
-    let widthIn: number | null = null;
-    if (row.width.trim()) {
-      const w = Number(row.width.trim());
-      if (!Number.isFinite(w) || w <= 0 || w > MAX_DIMENSION_VALUE) {
-        return { ok: false, error: `Width (in) for ${label} must be a positive number.` };
-      }
-      widthIn = w;
-    }
-    let lengthFt: number | null = null;
-    if (row.length.trim()) {
-      const l = Number(row.length.trim());
-      if (!Number.isFinite(l) || l <= 0 || l > MAX_DIMENSION_VALUE) {
-        return { ok: false, error: `Length (ft) for ${label} must be a positive number.` };
-      }
-      lengthFt = l;
-    }
-    const gauge = row.gauge.trim() ? row.gauge.trim().slice(0, 20) : null;
-
-    const rendered = formatSizeLabel({ gauge, width_in: widthIn, length_ft: lengthFt });
-    if (!rendered) {
-      return {
-        ok: false,
-        error: `${label} needs at least one of gauge, width, or length.`,
-      };
-    }
-    const labelKey = rendered.toLowerCase();
-    if (seenLabels.has(labelKey)) {
-      return {
-        ok: false,
-        error: `Duplicate size "${rendered}" for material type "${materialName}".`,
-      };
-    }
-    seenLabels.add(labelKey);
-
-    sizes.push({ price_per_lf_cents: priceCents, width_in: widthIn, gauge, length_ft: lengthFt });
+    const result = validateSizeRow(materialName, index + 1, row, seenLabels);
+    if (!result.ok) return result;
+    sizes.push(result.size);
   }
   return { ok: true, sizes };
 }

@@ -4,6 +4,7 @@
 
 import type Database from 'better-sqlite3';
 import { formatSizeLabel } from '../shared/size.ts';
+import type { ProductMaterialRow, ProductMaterialSizeRow } from './db.ts';
 import { parseCents } from './validation.ts';
 
 export const MAX_MATERIAL_TYPES_PER_PRODUCT = 50;
@@ -16,6 +17,8 @@ export interface ParsedSizeInput {
   widthIn: number | null;
   gauge: string | null;
   lengthFt: number | null;
+  /** The rendered label (e.g. `26 ga 5" x 5'`) — what duplicate detection compares. */
+  rendered: string;
 }
 
 /**
@@ -37,6 +40,45 @@ function parseDimension(raw: unknown): number | null | 'invalid' {
   return n;
 }
 
+/** The duplicate-Size message, shared by the product editor path and the in-quote add. */
+export function duplicateSizeError(rendered: string, materialName: string): string {
+  return `Duplicate size "${rendered}" for material type "${materialName}".`;
+}
+
+/**
+ * Validates one Size as submitted — `{ price_per_lf_cents, gauge?, width_in?, length_ft? }` —
+ * under the given `label` (e.g. `Size #2 of "Aluminum"`), with the exact wording the catalog
+ * editor uses. `rendered` comes back on the parsed Size so callers can run the duplicate check.
+ */
+export function parseSizeInput(
+  raw: unknown,
+  label: string
+): { ok: true; size: ParsedSizeInput } | { ok: false; error: string } {
+  const s = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+
+  const priceCents = parseCents(s.price_per_lf_cents);
+  if (priceCents === null) {
+    return { ok: false, error: `${label} needs a valid non-negative price per linear ft.` };
+  }
+  const widthIn = parseDimension(s.width_in);
+  if (widthIn === 'invalid') {
+    return { ok: false, error: `Width (in) for ${label} must be a positive number.` };
+  }
+  const lengthFt = parseDimension(s.length_ft);
+  if (lengthFt === 'invalid') {
+    return { ok: false, error: `Length (ft) for ${label} must be a positive number.` };
+  }
+  const gauge = typeof s.gauge === 'string' && s.gauge.trim() ? s.gauge.trim().slice(0, 20) : null;
+
+  // At least one Dimension, so two Sizes of one Material Type can never be indistinguishable.
+  const rendered = formatSizeLabel({ gauge, width_in: widthIn, length_ft: lengthFt });
+  if (!rendered) {
+    return { ok: false, error: `${label} needs at least one of gauge, width, or length.` };
+  }
+
+  return { ok: true, size: { priceCents, widthIn, gauge, lengthFt, rendered } };
+}
+
 function parseSizes(raw: unknown, materialName: string): { ok: true; sizes: ParsedSizeInput[] } | { ok: false; error: string } {
   if (raw === undefined || raw === null) return { ok: true, sizes: [] };
   if (!Array.isArray(raw)) {
@@ -52,40 +94,41 @@ function parseSizes(raw: unknown, materialName: string): { ok: true; sizes: Pars
   const sizes: ParsedSizeInput[] = [];
   const seenLabels = new Set<string>();
   for (const [index, entry] of raw.entries()) {
-    const s = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
-    const label = `Size #${index + 1} of "${materialName}"`;
-
-    const priceCents = parseCents(s.price_per_lf_cents);
-    if (priceCents === null) {
-      return { ok: false, error: `${label} needs a valid non-negative price per linear ft.` };
-    }
-    const widthIn = parseDimension(s.width_in);
-    if (widthIn === 'invalid') {
-      return { ok: false, error: `Width (in) for ${label} must be a positive number.` };
-    }
-    const lengthFt = parseDimension(s.length_ft);
-    if (lengthFt === 'invalid') {
-      return { ok: false, error: `Length (ft) for ${label} must be a positive number.` };
-    }
-    const gauge = typeof s.gauge === 'string' && s.gauge.trim() ? s.gauge.trim().slice(0, 20) : null;
-
-    // At least one Dimension, so two Sizes of one Material Type can never be indistinguishable.
-    const rendered = formatSizeLabel({ gauge, width_in: widthIn, length_ft: lengthFt });
-    if (!rendered) {
-      return { ok: false, error: `${label} needs at least one of gauge, width, or length.` };
-    }
-    const labelKey = rendered.toLowerCase();
+    const result = parseSizeInput(entry, `Size #${index + 1} of "${materialName}"`);
+    if (!result.ok) return result;
+    const labelKey = result.size.rendered.toLowerCase();
     if (seenLabels.has(labelKey)) {
-      return {
-        ok: false,
-        error: `Duplicate size "${rendered}" for material type "${materialName}".`,
-      };
+      return { ok: false, error: duplicateSizeError(result.size.rendered, materialName) };
     }
     seenLabels.add(labelKey);
-
-    sizes.push({ priceCents, widthIn, gauge, lengthFt });
+    sizes.push(result.size);
   }
   return { ok: true, sizes };
+}
+
+/**
+ * Validates one Size being added to an existing Material Type (the in-quote "add size"):
+ * numbered after the Sizes the Type already has and refused when its rendered label
+ * matches one of them — exactly as the catalog editor would refuse it.
+ */
+export function parseNewSizeInput(
+  raw: unknown,
+  materialName: string,
+  existingSizes: readonly { gauge: string | null; width_in: number | null; length_ft: number | null }[]
+): { ok: true; size: ParsedSizeInput } | { ok: false; error: string } {
+  if (existingSizes.length >= MAX_SIZES_PER_MATERIAL_TYPE) {
+    return {
+      ok: false,
+      error: `Material type "${materialName}" can have at most ${MAX_SIZES_PER_MATERIAL_TYPE} sizes.`,
+    };
+  }
+  const parsed = parseSizeInput(raw, `Size #${existingSizes.length + 1} of "${materialName}"`);
+  if (!parsed.ok) return parsed;
+  const labelKey = parsed.size.rendered.toLowerCase();
+  if (existingSizes.some((s) => formatSizeLabel(s)?.toLowerCase() === labelKey)) {
+    return { ok: false, error: duplicateSizeError(parsed.size.rendered, materialName) };
+  }
+  return parsed;
 }
 
 /**
@@ -186,5 +229,60 @@ export function replaceProductMaterials(
       });
     });
     sync.run(materialTypeColumnValue(materials, ''), productId);
+  })();
+}
+
+/**
+ * Adds one Size to a Material Type in a single transaction: appended after the existing
+ * Sizes, and — when it is the Type's first — the Type's general Price mirrors it, the same
+ * rule the product editor applies when it saves its first Size. Returns the created Size
+ * and the updated Material Type with all its Sizes in order.
+ */
+export function addSizeToMaterial(
+  db: Database.Database,
+  material: ProductMaterialRow,
+  size: ParsedSizeInput
+): { size: ProductMaterialSizeRow; material: ProductMaterialRow & { sizes: ProductMaterialSizeRow[] } } {
+  const now = new Date().toISOString();
+  const insertSize = db.prepare(`
+    INSERT INTO product_material_sizes (material_id, price_per_lf_cents, width_in, gauge, length_ft, sort_order, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const countStmt = db.prepare('SELECT COUNT(*) AS cnt FROM product_material_sizes WHERE material_id = ?');
+  const maxSortStmt = db.prepare(
+    'SELECT COALESCE(MAX(sort_order), -1) AS m FROM product_material_sizes WHERE material_id = ?'
+  );
+  const syncTypePrice = db.prepare('UPDATE product_materials SET price_per_lf_cents = ? WHERE id = ?');
+  const getSize = db.prepare('SELECT * FROM product_material_sizes WHERE id = ?');
+  const listSizes = db.prepare(
+    'SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC'
+  );
+
+  return db.transaction(() => {
+    const materialId = material.id;
+    const count = (countStmt.get(materialId) as { cnt: number }).cnt;
+    const maxSort = (maxSortStmt.get(materialId) as { m: number }).m;
+    const info = insertSize.run(
+      materialId,
+      size.priceCents,
+      size.widthIn,
+      size.gauge,
+      size.lengthFt,
+      maxSort + 1,
+      now
+    );
+    const sizeId = Number(info.lastInsertRowid);
+
+    // First Size of the Type: the general Price follows it, so removing every Size later
+    // still leaves a usable Price — the same mirror the catalog editor applies on save.
+    let materialPriceCents = material.price_per_lf_cents;
+    if (count === 0) {
+      syncTypePrice.run(size.priceCents, materialId);
+      materialPriceCents = size.priceCents;
+    }
+
+    const created = getSize.get(sizeId) as ProductMaterialSizeRow;
+    const sizes = listSizes.all(materialId) as ProductMaterialSizeRow[];
+    return { size: created, material: { ...material, price_per_lf_cents: materialPriceCents, sizes } };
   })();
 }

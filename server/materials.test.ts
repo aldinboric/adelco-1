@@ -4,7 +4,13 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getMaterialsByProductId, initSchema } from './db.ts';
-import { parseMaterialsInput, replaceProductMaterials } from './materials.ts';
+import {
+  addSizeToMaterial,
+  MAX_SIZES_PER_MATERIAL_TYPE,
+  parseMaterialsInput,
+  parseNewSizeInput,
+  replaceProductMaterials,
+} from './materials.ts';
 
 // Every test runs against a throwaway data directory: a real SQLite file in tmp,
 // dropped afterwards, so saving is exercised through the same statements production uses.
@@ -151,5 +157,168 @@ describe('replaceProductMaterials', () => {
       cnt: number;
     };
     expect(sizeRows.cnt).toBe(1);
+  });
+});
+
+describe('parseNewSizeInput (in-quote size addition)', () => {
+  const existingSizes = [
+    { gauge: '26', width_in: 5, length_ft: 5 },
+    { gauge: '26', width_in: 5, length_ft: 10 },
+  ];
+
+  it('numbers the new Size after the existing ones, as the catalog editor would', () => {
+    const parsed = parseNewSizeInput({ price_per_lf_cents: 900 }, 'Aluminum', existingSizes);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: 'Size #3 of "Aluminum" needs at least one of gauge, width, or length.',
+    });
+  });
+
+  it('requires a valid price first', () => {
+    const parsed = parseNewSizeInput({ width_in: 6 }, 'Aluminum', existingSizes);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: 'Size #3 of "Aluminum" needs a valid non-negative price per linear ft.',
+    });
+  });
+
+  it('rejects a non-positive width', () => {
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, width_in: -5 },
+      'Aluminum',
+      existingSizes
+    );
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: 'Width (in) for Size #3 of "Aluminum" must be a positive number.',
+    });
+  });
+
+  it('rejects a non-positive length', () => {
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, length_ft: 0 },
+      'Aluminum',
+      existingSizes
+    );
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: 'Length (ft) for Size #3 of "Aluminum" must be a positive number.',
+    });
+  });
+
+  it('refuses a label an existing Size already has, with the catalog editor message', () => {
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, gauge: '26', width_in: 5, length_ft: 10 },
+      'Aluminum',
+      existingSizes
+    );
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: `Duplicate size "26 ga 5" x 10'" for material type "Aluminum".`,
+    });
+  });
+
+  it('refuses the same label in different case', () => {
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, gauge: '26 GA', width_in: 5, length_ft: 10 },
+      'Aluminum',
+      existingSizes
+    );
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: `Duplicate size "26 GA 5" x 10'" for material type "Aluminum".`,
+    });
+  });
+
+  it('refuses the addition once the Material Type has the maximum number of Sizes', () => {
+    const full = Array.from({ length: MAX_SIZES_PER_MATERIAL_TYPE }, (_, i) => ({
+      gauge: null,
+      width_in: i + 1,
+      length_ft: null,
+    }));
+    const parsed = parseNewSizeInput({ price_per_lf_cents: 900, width_in: 999 }, 'Aluminum', full);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: `Material type "Aluminum" can have at most ${MAX_SIZES_PER_MATERIAL_TYPE} sizes.`,
+    });
+  });
+
+  it('accepts a distinct Size and returns its rendered label', () => {
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, gauge: '24', width_in: 6, length_ft: 12 },
+      'Aluminum',
+      existingSizes
+    );
+
+    expect(parsed).toEqual({
+      ok: true,
+      size: {
+        priceCents: 900,
+        widthIn: 6,
+        gauge: '24',
+        lengthFt: 12,
+        rendered: `24 ga 6" x 12'`,
+      },
+    });
+  });
+});
+
+describe('addSizeToMaterial (in-quote size addition)', () => {
+  it('appends the Size after the existing ones and returns it with the updated Type', () => {
+    const [aluminum] = savedMaterials(aluminumWithTwoSizes);
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 900, gauge: '26', width_in: 5, length_ft: 12 },
+      aluminum.name,
+      aluminum.sizes
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+
+    const result = addSizeToMaterial(db, aluminum, parsed.size);
+
+    expect(result.size).toMatchObject({
+      material_id: aluminum.id,
+      price_per_lf_cents: 900,
+      gauge: '26',
+      width_in: 5,
+      length_ft: 12,
+    });
+    expect(result.material.sizes.map((s) => s.id)).toEqual([
+      ...aluminum.sizes.map((s) => s.id),
+      result.size.id,
+    ]);
+    // The Type already had Sizes, so its general Price still mirrors the first one.
+    expect(result.material.price_per_lf_cents).toBe(500);
+
+    // Persisted: every later quote reads the new Size from the catalog.
+    const rows = db
+      .prepare('SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC')
+      .all(aluminum.id) as Array<{ length_ft: number | null }>;
+    expect(rows.map((r) => r.length_ft)).toEqual([5, 10, 12]);
+  });
+
+  it("mirrors the new Size's Price into the Type when it is the Type's first Size", () => {
+    const [wood] = savedMaterials([{ name: 'Wood', price_per_lf_cents: 900 }]);
+    const parsed = parseNewSizeInput(
+      { price_per_lf_cents: 700, width_in: 6 },
+      wood.name,
+      wood.sizes
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+
+    const result = addSizeToMaterial(db, wood, parsed.size);
+
+    expect(result.material.price_per_lf_cents).toBe(700);
+    expect(result.material.sizes.map((s) => s.price_per_lf_cents)).toEqual([700]);
+    const row = db
+      .prepare('SELECT price_per_lf_cents FROM product_materials WHERE id = ?')
+      .get(wood.id) as { price_per_lf_cents: number };
+    expect(row.price_per_lf_cents).toBe(700);
   });
 });

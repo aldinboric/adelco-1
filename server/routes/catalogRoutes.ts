@@ -9,6 +9,8 @@ import {
   getDb,
   type MetalColorRow,
   type MetalProductRow,
+  type ProductMaterialRow,
+  type ProductMaterialSizeRow,
   PRODUCT_IMAGES_DIR,
   removeImageFileIfUnused,
   resolveSafeImagePath,
@@ -20,9 +22,11 @@ import {
   buildProductsPdf,
 } from '../exports.ts';
 import {
+  addSizeToMaterial,
   materialTypeColumnValue,
   type ParsedMaterialTypeInput,
   parseMaterialsInput,
+  parseNewSizeInput,
   replaceProductMaterials,
 } from '../materials.ts';
 import {
@@ -488,6 +492,43 @@ export function createCatalogRouter(): Router {
         console.error('Failed to update product:', err);
         res.status(400).json({ error: 'Failed to update product. Please check the uploaded image and try again.' });
       }
+    }
+  );
+
+  // Add one Size to a Material Type without leaving the quote: validated exactly as the
+  // catalog editor validates it (including the duplicate-label refusal), written to the
+  // catalog, and returned with the updated Material Type so the line can select it at once.
+  router.post(
+    '/products/:id/materials/:materialId/sizes',
+    requireAuth,
+    requirePermission('products_manage'),
+    (req: Request, res: Response) => {
+      const productId = parsePositiveInt(req.params.id);
+      const materialId = parsePositiveInt(req.params.materialId);
+      if (!productId || !materialId) {
+        res.status(400).json({ error: 'Invalid product or material type ID.' });
+        return;
+      }
+      const db = getDb();
+      const material = db
+        .prepare('SELECT * FROM product_materials WHERE id = ? AND product_id = ?')
+        .get(materialId, productId) as ProductMaterialRow | undefined;
+      if (!material) {
+        res.status(404).json({ error: 'Material type not found.' });
+        return;
+      }
+      const existingSizes = db
+        .prepare('SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC')
+        .all(material.id) as ProductMaterialSizeRow[];
+
+      const parsed = parseNewSizeInput(req.body, material.name, existingSizes);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+
+      const result = addSizeToMaterial(db, material, parsed.size);
+      res.status(201).json(result);
     }
   );
 

@@ -14,12 +14,15 @@ import type {
   IssuedQuoteDetail,
   MetalColor,
   MetalProduct,
+  ProductMaterial,
+  ProductMaterialSize,
   QuoteDraftItem,
   QuoteDraftState,
   QuotePayloadItem,
 } from '../types';
 import { apiFetch } from '../utils/api';
-import { dollarsInputToCents, downloadBlobResponse, formatCAD } from '../utils/format';
+import { centsToDollarsInput, dollarsInputToCents, downloadBlobResponse, formatCAD } from '../utils/format';
+import { validateSizeRow, type SizeFormInput } from '../utils/sizeValidation';
 import { ProductThumbnail } from './ProductThumbnail';
 
 interface CustomerQuoteViewProps {
@@ -28,6 +31,14 @@ interface CustomerQuoteViewProps {
   products: MetalProduct[];
   colors: MetalColor[];
   canExport?: boolean;
+  /** Catalog-manage permission: without it the "add size" option is not shown at all. */
+  canManageCatalog?: boolean;
+  /** Reflects a Size just saved to the catalog into the local products state. */
+  onMaterialSizeAdded?: (
+    productId: number,
+    materialId: number,
+    added: { size: ProductMaterialSize; material: ProductMaterial }
+  ) => void;
   onQuoteIssued: (detail: IssuedQuoteDetail) => void;
   onClearDraftConfirmed: () => void;
   onNotify: (type: 'success' | 'error', text: string) => void;
@@ -39,6 +50,8 @@ export function CustomerQuoteView({
   products,
   colors,
   canExport = true,
+  canManageCatalog = false,
+  onMaterialSizeAdded,
   onQuoteIssued,
   onClearDraftConfirmed,
   onNotify,
@@ -46,6 +59,16 @@ export function CustomerQuoteView({
   const [issuing, setIssuing] = useState(false);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // The inline "add size" form open on one row: which row, its fields, and its error.
+  const [addSizeRowKey, setAddSizeRowKey] = useState<string | null>(null);
+  const [addSizeFields, setAddSizeFields] = useState<SizeFormInput>({ price: '', width: '', gauge: '', length: '' });
+  const [addSizeError, setAddSizeError] = useState<string | null>(null);
+  const [addSizeSaving, setAddSizeSaving] = useState(false);
+
+  // The option exists only for catalog managers, and only when a saved Size can be
+  // reflected into the local catalog state (App passes both together).
+  const canAddSize = canManageCatalog && Boolean(onMaterialSizeAdded);
 
   // A Preview — a Product with no Material Types — has nothing to price a Line from, so it
   // never reaches the picker. It becomes selectable as soon as its first Material Type is saved.
@@ -83,8 +106,13 @@ export function CustomerQuoteView({
     });
   };
 
+  const closeAddSizeFor = (rowKey: string) => {
+    setAddSizeRowKey((current) => (current === rowKey ? null : current));
+  };
+
   const removeRow = (rowKey: string) => {
     setValidationError(null);
+    closeAddSizeFor(rowKey);
     onChangeDraft({
       ...draft,
       items: draft.items.filter((item) => item.rowKey !== rowKey),
@@ -186,6 +214,80 @@ export function CustomerQuoteView({
   const anyRowHasColorSelected = computedRows.some(
     (r) => (r.colorAvailable && r.productAvailable) || r.hasColorIssue
   );
+
+  // --- Add a Size to the line's Material Type without leaving the quote ---------------
+
+  const startAddSize = (row: (typeof computedRows)[number]) => {
+    setAddSizeRowKey(row.item.rowKey);
+    // A new Size starts at the Type's price, like the catalog editor's "Add size".
+    setAddSizeFields({
+      price: row.selectedMaterial ? centsToDollarsInput(row.selectedMaterial.price_per_lf_cents) : '',
+      width: '',
+      gauge: '',
+      length: '',
+    });
+    setAddSizeError(null);
+  };
+
+  const cancelAddSize = () => {
+    setAddSizeRowKey(null);
+    setAddSizeError(null);
+  };
+
+  const handleSaveNewSize = async (row: (typeof computedRows)[number]) => {
+    const product = row.product;
+    const material = row.selectedMaterial;
+    if (!product || !material || !onMaterialSizeAdded) return;
+
+    // Validated exactly as in the catalog editor, numbered after the Sizes the Type
+    // already has; the server re-validates with the same wording before writing.
+    const seenLabels = new Set(
+      row.materialSizes
+        .map((s) => formatSizeLabel(s)?.toLowerCase())
+        .filter((label): label is string => Boolean(label))
+    );
+    const result = validateSizeRow(material.name, row.materialSizes.length + 1, addSizeFields, seenLabels);
+    if (!result.ok) {
+      setAddSizeError(result.error);
+      return;
+    }
+
+    setAddSizeSaving(true);
+    setAddSizeError(null);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/materials/${material.id}/sizes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.size),
+      });
+      const data = (await res.json()) as {
+        size: ProductMaterialSize;
+        material: ProductMaterial;
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to add size.');
+      }
+
+      // The saved Size reaches the local catalog at once, so the line selects it and the
+      // total updates without a reload; the write persists for every later quote.
+      onMaterialSizeAdded(product.id, material.id, data);
+      updateRow(row.item.rowKey, {
+        size_id: data.size.id,
+        sizeIssue: null,
+        fallbackSizeLabel: formatSizeLabel(data.size),
+      });
+      setAddSizeRowKey(null);
+      onNotify(
+        'success',
+        `Size ${formatSizeLabel(data.size) ?? `#${data.size.id}`} added to ${material.name} and saved to the catalog.`
+      );
+    } catch (err) {
+      setAddSizeError(err instanceof Error ? err.message : 'Failed to add size.');
+    } finally {
+      setAddSizeSaving(false);
+    }
+  };
 
   const validateBeforeSubmit = (): QuotePayloadItem[] | null => {
     if (draft.items.length === 0) {
@@ -516,6 +618,7 @@ export function CustomerQuoteView({
                               value={item.product_id ?? ''}
                               onChange={(e) => {
                                 const val = e.target.value ? Number(e.target.value) : null;
+                                closeAddSizeFor(item.rowKey);
                                 updateRow(item.rowKey, {
                                   product_id: val,
                                   productIssue: null,
@@ -591,14 +694,15 @@ export function CustomerQuoteView({
                             productMaterials.length > 0 ? (
                               <select
                                 value={item.material_type}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                  closeAddSizeFor(item.rowKey);
                                   updateRow(item.rowKey, {
                                     material_type: e.target.value,
                                     size_id: null,
                                     sizeIssue: null,
                                     fallbackSizeLabel: null,
-                                  })
-                                }
+                                  });
+                                }}
                                 className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
                                   row.hasMaterialIssue
                                     ? 'border-red-500 bg-white text-red-800'
@@ -632,58 +736,161 @@ export function CustomerQuoteView({
                         >
                           {showColorStage ? (
                             row.selectedMaterial ? (
-                              row.materialSizes.length > 0 ? (
-                                <div className="space-y-2">
-                                  <select
-                                    value={item.size_id ?? ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value ? Number(e.target.value) : null;
-                                      const size =
-                                        val !== null
-                                          ? row.materialSizes.find((s) => s.id === val) ?? null
-                                          : null;
-                                      updateRow(item.rowKey, {
-                                        size_id: val,
-                                        sizeIssue: null,
-                                        fallbackSizeLabel: size ? formatSizeLabel(size) : null,
-                                      });
-                                    }}
-                                    className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
-                                      row.hasSizeIssue
-                                        ? 'border-red-500 bg-white text-red-800'
-                                        : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
-                                    }`}
-                                  >
-                                    <option value="">-- Select size --</option>
-                                    {row.materialSizes.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        {formatSizeLabel(s) ?? `#${s.id}`}
-                                      </option>
-                                    ))}
-                                  </select>
+                              <div className="space-y-2">
+                                {row.materialSizes.length > 0 ? (
+                                  <>
+                                    <select
+                                      value={item.size_id ?? ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value ? Number(e.target.value) : null;
+                                        const size =
+                                          val !== null
+                                            ? row.materialSizes.find((s) => s.id === val) ?? null
+                                            : null;
+                                        updateRow(item.rowKey, {
+                                          size_id: val,
+                                          sizeIssue: null,
+                                          fallbackSizeLabel: size ? formatSizeLabel(size) : null,
+                                        });
+                                      }}
+                                      className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                        row.hasSizeIssue
+                                          ? 'border-red-500 bg-white text-red-800'
+                                          : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                      }`}
+                                    >
+                                      <option value="">-- Select size --</option>
+                                      {row.materialSizes.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                          {formatSizeLabel(s) ?? `#${s.id}`}
+                                        </option>
+                                      ))}
+                                    </select>
 
-                                  {row.hasSizeIssue && (
-                                    <div className="text-[11px] font-semibold text-red-700">
-                                      Size &ldquo;
-                                      {item.fallbackSizeLabel ?? `#${item.size_id}`}
-                                      &rdquo; no longer available, please select a new one.
-                                    </div>
-                                  )}
+                                    {row.hasSizeIssue && (
+                                      <div className="text-[11px] font-semibold text-red-700">
+                                        Size &ldquo;
+                                        {item.fallbackSizeLabel ?? `#${item.size_id}`}
+                                        &rdquo; no longer available, please select a new one.
+                                      </div>
+                                    )}
 
-                                  {row.selectedSize && !row.hasSizeIssue && (
-                                    <div className="flex items-center gap-2 pt-0.5">
-                                      <span className="text-xs font-medium text-slate-800">
-                                        {formatSizeLabel(row.selectedSize)}
-                                      </span>
-                                      <span className="font-mono text-[11px] text-slate-500">
-                                        ({formatCAD(row.selectedSize.price_per_lf_cents)}/lf)
-                                      </span>
+                                    {row.selectedSize && !row.hasSizeIssue && (
+                                      <div className="flex items-center gap-2 pt-0.5">
+                                        <span className="text-xs font-medium text-slate-800">
+                                          {formatSizeLabel(row.selectedSize)}
+                                        </span>
+                                        <span className="font-mono text-[11px] text-slate-500">
+                                          ({formatCAD(row.selectedSize.price_per_lf_cents)}/lf)
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="block text-xs text-slate-400">No sizes</span>
+                                )}
+
+                                {/* A Material Type missing the needed Size offers to add one —
+                                    only for users who can manage the catalog. */}
+                                {canAddSize &&
+                                  (addSizeRowKey === item.rowKey ? (
+                                    <div className="space-y-1.5 rounded-md border border-slate-200 bg-[#f7f7f7] p-2">
+                                      {addSizeError && (
+                                        <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700">
+                                          {addSizeError}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="text"
+                                          maxLength={20}
+                                          value={addSizeFields.gauge}
+                                          onChange={(e) =>
+                                            setAddSizeFields((f) => ({ ...f, gauge: e.target.value }))
+                                          }
+                                          placeholder="Gauge"
+                                          title="Gauge — optional"
+                                          aria-label={`Gauge for new size of ${row.selectedMaterial.name}`}
+                                          className="w-[64px] rounded-md border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                        />
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={addSizeFields.width}
+                                          onChange={(e) =>
+                                            setAddSizeFields((f) => ({ ...f, width: e.target.value }))
+                                          }
+                                          placeholder='Width (in)'
+                                          title="Width (in) — optional"
+                                          aria-label={`Width (in) for new size of ${row.selectedMaterial.name}`}
+                                          className="w-[76px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                        />
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={addSizeFields.length}
+                                          onChange={(e) =>
+                                            setAddSizeFields((f) => ({ ...f, length: e.target.value }))
+                                          }
+                                          placeholder="Length (ft)"
+                                          title="Length (ft) — optional"
+                                          aria-label={`Length (ft) for new size of ${row.selectedMaterial.name}`}
+                                          className="w-[76px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                        />
+                                        <div className="relative w-[88px] shrink-0">
+                                          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                                            $
+                                          </span>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={addSizeFields.price}
+                                            onChange={(e) =>
+                                              setAddSizeFields((f) => ({ ...f, price: e.target.value }))
+                                            }
+                                            placeholder="0.00"
+                                            title="Price per linear ft for this size (CAD)"
+                                            aria-label={`Price per linear ft for new size of ${row.selectedMaterial.name}`}
+                                            className="w-full rounded-md border border-slate-300 bg-white py-1 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={cancelAddSize}
+                                          disabled={addSizeSaving}
+                                          className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleSaveNewSize(row)}
+                                          disabled={addSizeSaving}
+                                          className="rounded bg-[#084091] px-2 py-1 text-[11px] font-semibold text-white hover:bg-[#063273] disabled:bg-slate-400"
+                                        >
+                                          {addSizeSaving ? 'Saving...' : 'Save size'}
+                                        </button>
+                                      </div>
+                                      <p className="text-[10px] leading-snug text-slate-500">
+                                        Saved to the catalog and selected on this line.
+                                      </p>
                                     </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="block text-xs text-slate-400">No sizes</span>
-                              )
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => startAddSize(row)}
+                                      className="inline-flex items-center gap-1 rounded border border-[#084091] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      Add size
+                                    </button>
+                                  ))}
+                              </div>
                             ) : (
                               <span className="block text-xs text-slate-400">
                                 Select material type first

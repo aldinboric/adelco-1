@@ -724,7 +724,7 @@ export function CustomerQuoteView({
 
                         {/* Step 1c: Size selection — exactly the sizes saved for the selected
                             material type. Required when the type has sizes; a type without
-                            sizes shows "No sizes (Enter or Skip)" and quotes at its
+                            sizes shows "No sizes (Add or Skip)" and quotes at its
                             general price. */}
                         <td
                           className={`px-4 py-3 align-top text-left ${
@@ -787,7 +787,7 @@ export function CustomerQuoteView({
                                   </>
                                 ) : (
                                   <span className="block text-xs text-slate-400">
-                                    No sizes (Enter or Skip)
+                                    No sizes (Add or Skip)
                                   </span>
                                 )}
 

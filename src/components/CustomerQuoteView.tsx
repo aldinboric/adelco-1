@@ -547,10 +547,7 @@ export function CustomerQuoteView({
       <div className="ui-card overflow-hidden">
         {draft.items.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef4fc] text-[#084091]">
-              <Plus className="h-5 w-5" />
-            </div>
-            <h3 className="text-base font-semibold text-slate-900">Start a Customer Quote</h3>
+            <h3 className="text-xl font-semibold text-slate-900">Start a Customer Quote</h3>
             <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">
               Add one or more products from your catalog. For each item, choose the product, then its material type, size, and color, and finally enter the linear feet to calculate the total price in CAD
             </p>

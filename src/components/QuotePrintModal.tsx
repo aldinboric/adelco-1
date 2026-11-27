@@ -110,7 +110,7 @@ export function QuotePrintModal({
                 />
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h2>
-                  <p className="text-xs text-slate-500">Products & Finishes · Customer Quote</p>
+                  <p className="text-center text-[12.5px] font-medium uppercase tracking-wider text-slate-400">Home Services</p>
                 </div>
               </div>
 
@@ -143,27 +143,23 @@ export function QuotePrintModal({
           </div>
 
           {/* Snapshot Items Table */}
-          <div className="mt-6 overflow-x-auto rounded-md border border-slate-200">
-            <table className="w-full border-collapse text-left text-xs">
+          <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200/90">
+            <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="divide-x divide-white/20 bg-[#084091] text-white">
-                  <th className="px-3.5 py-2.5 w-14 text-left">Preview</th>
-                  <th className="px-3.5 py-2.5 text-left">Product</th>
-                  <th className="px-3.5 py-2.5 text-left">Color</th>
-                  <th className="px-3.5 py-2.5 text-right">Product / lf</th>
-                  <th className="px-3.5 py-2.5 text-right">Total / lf</th>
-                  <th className="px-3.5 py-2.5 text-right">Linear ft</th>
-                  <th className="px-3.5 py-2.5 text-right">Additional Costs</th>
-                  <th className="px-3.5 py-2.5 text-right">Total Price</th>
+                <tr className="ui-table-head">
+                  <th className="px-4 py-3 w-14 text-left">Preview</th>
+                  <th className="px-4 py-3 text-left">Product</th>
+                  <th className="px-4 py-3 text-left">Color</th>
+                  <th className="px-4 py-3 text-right">Product/LF + Color</th>
+                  <th className="px-4 py-3 text-right">Linear ft</th>
+                  <th className="px-4 py-3 text-right">Additional Costs</th>
+                  <th className="px-4 py-3 text-right">Total Price</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
-                {lines.map(({ item, detailLine }, idx) => (
-                  <tr
-                    key={item.id}
-                    className={`divide-x divide-slate-200 ${idx % 2 === 1 ? 'bg-[#f7f7f7]/70' : 'bg-white'}`}
-                  >
-                    <td className="px-3.5 py-2.5 text-left">
+              <tbody className="divide-y divide-slate-100">
+                {lines.map(({ item, detailLine }) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3 text-left">
                       <div className="flex items-center">
                         <ProductThumbnail
                           imagePath={item.product_image_path}
@@ -172,13 +168,13 @@ export function QuotePrintModal({
                         />
                       </div>
                     </td>
-                    <td className="px-3.5 py-2.5 text-left font-medium text-slate-900">
+                    <td className="px-4 py-3 text-left font-medium text-slate-900">
                       <div>{item.product_name}</div>
                       {detailLine && (
                         <div className="mt-0.5 text-[11px] font-normal text-[#084091]">{detailLine}</div>
                       )}
                     </td>
-                    <td className="px-3.5 py-2.5 text-left">
+                    <td className="px-4 py-3 text-left">
                       <div className="flex items-center gap-2">
                         <span
                           className="inline-block h-4 w-5 shrink-0 rounded"
@@ -187,16 +183,13 @@ export function QuotePrintModal({
                         <span className="text-slate-800">{item.color_name}</span>
                       </div>
                     </td>
-                    <td className="px-3.5 py-2.5 text-right font-mono tabular-nums text-slate-700">
-                      {formatCAD(item.product_price_per_lf_cents)}
-                    </td>
-                    <td className="px-3.5 py-2.5 text-right font-mono tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-900">
                       {formatCAD(item.combined_price_per_lf_cents)}
                     </td>
-                    <td className="px-3.5 py-2.5 text-right font-mono tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-900">
                       {item.linear_feet}
                     </td>
-                    <td className="px-3.5 py-2.5 text-right tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">
                       {item.additional_costs_description && (
                         <div className="mb-0.5 text-[11px] leading-tight text-slate-500">
                           {item.additional_costs_description}
@@ -204,7 +197,7 @@ export function QuotePrintModal({
                       )}
                       <div className="font-mono">{formatCAD(item.additional_costs_cents ?? 0)}</div>
                     </td>
-                    <td className="px-3.5 py-2.5 text-right font-mono font-semibold tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-slate-900">
                       {formatCAD(item.line_total_cents)}
                     </td>
                   </tr>

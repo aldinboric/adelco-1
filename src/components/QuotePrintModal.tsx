@@ -27,7 +27,7 @@ export function QuotePrintModal({
 
   // The same detail line the quote PDF prints under the Product name: the Material Type
   // with the Size's shared label beside it in the same line.
-  const rows = items.map((item) => ({
+  const lines = items.map((item) => ({
     item,
     detailLine: formatMaterialSizeLine(item.material_type, item),
   }));
@@ -171,7 +171,7 @@ export function QuotePrintModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {rows.map(({ item, detailLine }, idx) => (
+                {lines.map(({ item, detailLine }, idx) => (
                   <tr
                     key={item.id}
                     className={`divide-x divide-slate-200 ${idx % 2 === 1 ? 'bg-[#f7f7f7]/70' : 'bg-white'}`}

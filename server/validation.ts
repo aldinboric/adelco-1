@@ -107,6 +107,10 @@ export function validateAndBuildQuoteLines(
   const db = getDb();
   const getProd = db.prepare('SELECT * FROM metal_products WHERE id = ?');
   const getColor = db.prepare('SELECT * FROM metal_colors WHERE id = ?');
+  // Prepared once per request, not once per line.
+  const getMaterialSizes = db.prepare(
+    'SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC'
+  );
 
   const items: ValidatedQuoteLine[] = [];
   let totalCents = 0;
@@ -189,9 +193,7 @@ export function validateAndBuildQuoteLines(
     // them — a Line is never priced from a Size the catalog does not sell. The issued
     // line stores the Size's Dimensions (storage is unchanged: the existing dimension
     // columns are filled from the selected Size, and the label is re-derived on render).
-    const materialSizes = db
-      .prepare('SELECT * FROM product_material_sizes WHERE material_id = ? ORDER BY sort_order ASC, id ASC')
-      .all(selectedMaterial.id) as Array<{
+    const materialSizes = getMaterialSizes.all(selectedMaterial.id) as Array<{
       id: number;
       price_per_lf_cents: number;
       width_in: number | null;

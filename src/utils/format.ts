@@ -3,8 +3,6 @@ export {
   centsToDollarsInput,
   dollarsInputToCents,
   formatCAD,
-  formatGaugeLabel,
-  formatMaterialMeasures,
   formatMeasureDimensions,
   todayIsoDate,
 } from '../../shared/format.ts';

@@ -3,6 +3,8 @@ import {
   findSizeByDimensions,
   formatMaterialSizeLine,
   formatSizeLabel,
+  generalPriceAfterSizeRemoval,
+  materialTypePriceCents,
   resolveCopiedSize,
   resolvePricePerLfCents,
 } from './size.ts';
@@ -92,6 +94,56 @@ describe('resolvePricePerLfCents', () => {
     expect(
       resolvePricePerLfCents({ product: null, materialType: null, size: null })
     ).toBeNull();
+  });
+});
+
+describe('materialTypePriceCents (ADR-0001: the general Price mirrors the first Size)', () => {
+  it("mirrors the first Size's Price while the Material Type has Sizes", () => {
+    expect(
+      materialTypePriceCents([{ price_per_lf_cents: 500 }, { price_per_lf_cents: 700 }], 900)
+    ).toBe(500);
+  });
+
+  it("falls back to the Type's own Price when it has no Sizes", () => {
+    expect(materialTypePriceCents([], 900)).toBe(900);
+    expect(materialTypePriceCents([], null)).toBeNull();
+  });
+
+  it('has no mirror when the first Size carries no usable Price', () => {
+    expect(materialTypePriceCents([{ price_per_lf_cents: null }], 900)).toBeNull();
+    expect(materialTypePriceCents([{ price_per_lf_cents: Number.NaN }], 900)).toBeNull();
+  });
+});
+
+describe('generalPriceAfterSizeRemoval (story 10: removing every Size keeps the first Size\'s Price)', () => {
+  const rows = [
+    { key: 'a', price: '5.00' },
+    { key: 'b', price: '7.00' },
+  ];
+
+  it('keeps the general Price while Sizes remain', () => {
+    expect(generalPriceAfterSizeRemoval(rows, rows[1], '5.00')).toBe('5.00');
+    expect(generalPriceAfterSizeRemoval(rows, rows[0], '5.00')).toBe('5.00');
+  });
+
+  it("falls back to the pre-removal first Size's Price when the last Size is removed and none was set", () => {
+    expect(generalPriceAfterSizeRemoval([rows[0]], rows[0], '')).toBe('5.00');
+  });
+
+  it('regression: removing Sizes out of order ends at the first Size\'s Price, not the removed one', () => {
+    let price = '5.00';
+    price = generalPriceAfterSizeRemoval(rows, rows[0], price); // remove the first Size first
+    const remaining = rows.filter((r) => r !== rows[0]);
+    price = generalPriceAfterSizeRemoval(remaining, remaining[0], price); // then the last
+    expect(price).toBe('5.00');
+  });
+
+  it('removing Sizes in order lands on the same Price (the case the server test alone covered)', () => {
+    let price = '5.00';
+    price = generalPriceAfterSizeRemoval(rows, rows[1], price);
+    const remaining = rows.filter((r) => r !== rows[1]);
+    price = generalPriceAfterSizeRemoval(remaining, remaining[0], price);
+    expect(price).toBe('5.00');
   });
 });
 

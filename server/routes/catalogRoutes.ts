@@ -190,6 +190,8 @@ interface ProductInput {
   priceCents: number | null;
   removeImage: boolean;
   materials: ParsedMaterialTypeInput[];
+  /** Explicit Preview confirmation (saveAsPreview): required to save with no material types. */
+  saveAsPreview: boolean;
   imageValid: boolean;
 }
 
@@ -203,6 +205,9 @@ function parseProductInput(req: Request): { ok: true; value: ProductInput } | { 
     b.price_per_lf_cents !== undefined && b.price_per_lf_cents !== null && b.price_per_lf_cents !== '';
   const priceCents = priceProvided ? parseCents(b.price_per_lf_cents) : null;
   const removeImage = b.remove_image === 'true' || b.remove_image === true;
+  // The API shape for "save as Preview" (ADR-0002): the request carries saveAsPreview —
+  // `true` in JSON, 'true' as a multipart form field.
+  const saveAsPreview = b.saveAsPreview === true || b.saveAsPreview === 'true';
 
   if (!name) return { ok: false, error: 'Product name is required.' };
   if (priceProvided && priceCents === null) {
@@ -213,10 +218,26 @@ function parseProductInput(req: Request): { ok: true; value: ProductInput } | { 
   }
   const materialsResult = parseMaterialsInput(b.materials);
   if (!materialsResult.ok) return materialsResult;
+  // #5: a Product with no Material Types is a Preview, and Preview is an explicit choice —
+  // a client that submits no material types must say so, or the save is refused.
+  if (materialsResult.materials.length === 0 && !saveAsPreview) {
+    return {
+      ok: false,
+      error: 'Add at least one material type, or confirm saving as a Preview (saveAsPreview: true).',
+    };
+  }
 
   return {
     ok: true,
-    value: { name, materialType, priceCents, removeImage, materials: materialsResult.materials, imageValid: true },
+    value: {
+      name,
+      materialType,
+      priceCents,
+      removeImage,
+      materials: materialsResult.materials,
+      saveAsPreview,
+      imageValid: true,
+    },
   };
 }
 

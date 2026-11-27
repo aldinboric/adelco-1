@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { isPreview, productStatus, productStatusLabel } from '../../shared/preview.ts';
+import { generalPriceAfterSizeRemoval, materialTypePriceCents } from '../../shared/size.ts';
 import { useReorderableList } from '../hooks/useReorderableList';
-import type { MetalProduct } from '../types';
+import type { MetalProduct, SizeFormInput } from '../types';
 import { apiFetch } from '../utils/api';
 import {
   centsToDollarsInput,
@@ -21,8 +22,8 @@ import {
   formatCAD,
   getImageUrl,
 } from '../utils/format';
-import { sizesColumnLines, sizeCountLabel } from '../utils/sizeCounts';
-import { validateSizeRow, type SizeFormInput, type SizePayload } from '../utils/sizeValidation';
+import { sizesColumnLines, sizeCountLabel } from '../../shared/sizeCounts.ts';
+import { validateSize, type SizePayload } from '../../shared/sizeValidation.ts';
 import { ConfirmModal } from './ConfirmModal';
 import { ExportButtons } from './ExportButtons';
 import { ProductThumbnail } from './ProductThumbnail';
@@ -76,11 +77,6 @@ function newMaterialRow(pricePrefill = '', sizes: SizeRowDraft[] = []): Material
   };
 }
 
-/** A Material Type keeps its first Size's price as the general price whenever it has Sizes. */
-function mirrorTypePrice(row: MaterialRowDraft, sizes: SizeRowDraft[]): string {
-  return sizes.length > 0 ? sizes[0].price : row.price;
-}
-
 function isBlankSizeRow(size: SizeRowDraft): boolean {
   return !size.price.trim() && !size.width.trim() && !size.gauge.trim() && !size.length.trim();
 }
@@ -90,7 +86,21 @@ function isEmptyMaterialRow(row: MaterialRowDraft): boolean {
   return !row.name.trim() && !row.price.trim() && row.sizes.every(isBlankSizeRow);
 }
 
-/** Mirrors the server's Size rules so the editor refuses bad input with the same wording. */
+/**
+ * ADR-0001 in the draft: while a Material Type has Sizes, its general Price field mirrors
+ * the first Size's — via the one shared rule — so it doubles as the fallback Price for
+ * when every Size is removed.
+ */
+function mirrorTypePrice(currentPrice: string, sizes: SizeRowDraft[]): string {
+  const cents = materialTypePriceCents(
+    sizes.map((s) => ({ price_per_lf_cents: dollarsInputToCents(s.price) })),
+    dollarsInputToCents(currentPrice)
+  );
+  return cents === null ? currentPrice : centsToDollarsInput(cents);
+}
+
+/** Runs the one shared Size rule (shared/sizeValidation) so the editor refuses bad input
+ * with the same wording as the server. */
 function validateSizes(
   materialName: string,
   rows: SizeRowDraft[]
@@ -98,7 +108,13 @@ function validateSizes(
   const sizes: SizePayload[] = [];
   const seenLabels = new Set<string>();
   for (const [index, row] of rows.entries()) {
-    const result = validateSizeRow(materialName, index + 1, row, seenLabels);
+    const result = validateSize({
+      materialName,
+      sizeNumber: index + 1,
+      priceCents: dollarsInputToCents(row.price),
+      dimensions: { gauge: row.gauge, width_in: row.width, length_ft: row.length },
+      seenLabels,
+    });
     if (!result.ok) return result;
     sizes.push(result.size);
   }
@@ -288,7 +304,7 @@ export function MetalProductsView({
         if (r.key !== materialKey) return r;
         // A new Size starts at the Type's price: the common case is a second length at the same rate.
         const nextSizes = [...r.sizes, newSizeRow(r.price)];
-        return { ...r, expanded: true, sizes: nextSizes, price: mirrorTypePrice(r, nextSizes) };
+        return { ...r, expanded: true, sizes: nextSizes, price: mirrorTypePrice(r.price, nextSizes) };
       })
     );
   };
@@ -298,7 +314,7 @@ export function MetalProductsView({
       prev.map((r) => {
         if (r.key !== materialKey) return r;
         const nextSizes = r.sizes.map((s) => (s.key === sizeKey ? { ...s, ...patch } : s));
-        return { ...r, sizes: nextSizes, price: mirrorTypePrice(r, nextSizes) };
+        return { ...r, sizes: nextSizes, price: mirrorTypePrice(r.price, nextSizes) };
       })
     );
   };
@@ -308,10 +324,11 @@ export function MetalProductsView({
       prev.map((r) => {
         if (r.key !== materialKey) return r;
         const nextSizes = r.sizes.filter((s) => s.key !== sizeKey);
-        // While Sizes remain the general price follows the first one; removing the last
-        // Size keeps its price, so the Type stays sellable instead of needing a re-entry.
-        const removedPrice = r.sizes.find((s) => s.key === sizeKey)?.price ?? r.price;
-        const price = nextSizes.length > 0 ? nextSizes[0].price : removedPrice;
+        // While Sizes remain the general Price follows the first one at render/save time;
+        // removing the last Size — in any order — keeps the first Size's Price as the
+        // fallback, so the Type stays sellable instead of needing a re-entry (story 10).
+        const removed = r.sizes.find((s) => s.key === sizeKey);
+        const price = removed ? generalPriceAfterSizeRemoval(r.sizes, removed, r.price) : r.price;
         return { ...r, sizes: nextSizes, price };
       })
     );
@@ -358,7 +375,7 @@ export function MetalProductsView({
         return;
       }
       const sizes = sizesResult.sizes;
-      const priceCents = sizes.length > 0 ? sizes[0].price_per_lf_cents : dollarsInputToCents(row.price);
+      const priceCents = materialTypePriceCents(sizes, dollarsInputToCents(row.price));
       if (priceCents === null) {
         setFormError(`Material type "${name}" needs a valid non-negative price per linear ft.`);
         return;
@@ -372,6 +389,11 @@ export function MetalProductsView({
       const formData = new FormData();
       formData.append('name', trimmedName);
       formData.append('materials', JSON.stringify(materialsPayload));
+      // #5: the server only accepts a product with no material types when the Preview
+      // choice is explicit (ADR-0002), so the Preview save sends the flag.
+      if (willSaveAsPreview) {
+        formData.append('saveAsPreview', 'true');
+      }
       if (imageFile) {
         formData.append('image', imageFile);
       }
@@ -734,7 +756,11 @@ export function MetalProductsView({
                 <div className="space-y-2">
                   {materialRows.map((row, idx) => {
                     const hasSizes = row.sizes.length > 0;
-                    const mirrorCents = dollarsInputToCents(row.price);
+                    // ADR-0001: with Sizes the general price mirrors the first Size's.
+                    const mirrorCents = materialTypePriceCents(
+                      row.sizes.map((s) => ({ price_per_lf_cents: dollarsInputToCents(s.price) })),
+                      dollarsInputToCents(row.price)
+                    );
                     return (
                       <div
                         key={row.key}

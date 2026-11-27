@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { isPreview } from '../../shared/preview.ts';
-import { formatSizeLabel, resolvePricePerLfCents } from '../../shared/size.ts';
+import { formatSizeLabel, noSizeResolution, resolvePricePerLfCents } from '../../shared/size.ts';
 import type {
   IssuedQuoteDetail,
   MetalColor,
@@ -19,10 +19,11 @@ import type {
   QuoteDraftItem,
   QuoteDraftState,
   QuotePayloadItem,
+  SizeFormInput,
 } from '../types';
 import { apiFetch } from '../utils/api';
 import { centsToDollarsInput, dollarsInputToCents, downloadBlobResponse, formatCAD } from '../utils/format';
-import { validateSizeRow, type SizeFormInput } from '../utils/sizeValidation';
+import { validateSize } from '../../shared/sizeValidation.ts';
 import { ProductThumbnail } from './ProductThumbnail';
 
 interface CustomerQuoteViewProps {
@@ -85,7 +86,7 @@ export function CustomerQuoteView({
       rowKey: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       product_id: null,
       material_type: '',
-      size_id: null,
+      sizeResolution: noSizeResolution(),
       color_id: null,
       linear_feet_input: '',
       additional_costs_input: '',
@@ -135,10 +136,12 @@ export function CustomerQuoteView({
     // from the catalog after selection is flagged, the way a deleted Color already is.
     const materialSizes = selectedMaterial?.sizes ?? [];
     const selectedSize =
-      item.size_id !== null ? materialSizes.find((s) => s.id === item.size_id) ?? null : null;
+      item.sizeResolution.size_id !== null
+        ? materialSizes.find((s) => s.id === item.sizeResolution.size_id) ?? null
+        : null;
     const hasSizeIssue =
-      Boolean(item.sizeIssue) ||
-      (item.size_id !== null && selectedMaterial !== null && selectedSize === null);
+      Boolean(item.sizeResolution.sizeIssue) ||
+      (item.sizeResolution.size_id !== null && selectedMaterial !== null && selectedSize === null);
     const sizeRequired = selectedMaterial !== null && materialSizes.length > 0;
 
     const productAvailable = Boolean(product && product.is_available === 1);
@@ -246,7 +249,13 @@ export function CustomerQuoteView({
         .map((s) => formatSizeLabel(s)?.toLowerCase())
         .filter((label): label is string => Boolean(label))
     );
-    const result = validateSizeRow(material.name, row.materialSizes.length + 1, addSizeFields, seenLabels);
+    const result = validateSize({
+      materialName: material.name,
+      sizeNumber: row.materialSizes.length + 1,
+      priceCents: dollarsInputToCents(addSizeFields.price),
+      dimensions: { gauge: addSizeFields.gauge, width_in: addSizeFields.width, length_ft: addSizeFields.length },
+      seenLabels,
+    });
     if (!result.ok) {
       setAddSizeError(result.error);
       return;
@@ -273,9 +282,11 @@ export function CustomerQuoteView({
       // total updates without a reload; the write persists for every later quote.
       onMaterialSizeAdded(product.id, material.id, data);
       updateRow(row.item.rowKey, {
-        size_id: data.size.id,
-        sizeIssue: null,
-        fallbackSizeLabel: formatSizeLabel(data.size),
+        sizeResolution: {
+          size_id: data.size.id,
+          sizeIssue: null,
+          fallbackSizeLabel: formatSizeLabel(data.size),
+        },
       });
       setAddSizeRowKey(null);
       onNotify(
@@ -308,11 +319,11 @@ export function CustomerQuoteView({
       }
       if (r.hasSizeIssue) {
         setValidationError(
-          `Line #${i + 1}: Size "${r.item.fallbackSizeLabel ?? `#${r.item.size_id}`}" is no longer available — please select a replacement.`
+          `Line #${i + 1}: Size "${r.item.sizeResolution.fallbackSizeLabel ?? `#${r.item.sizeResolution.size_id}`}}" is no longer available — please select a replacement.`
         );
         return null;
       }
-      if (r.sizeRequired && r.item.size_id === null) {
+      if (r.sizeRequired && r.item.sizeResolution.size_id === null) {
         setValidationError(
           `Line #${i + 1}: Please select a Size — material type "${r.item.material_type.trim()}" has sizes.`
         );
@@ -335,7 +346,7 @@ export function CustomerQuoteView({
       payloadItems.push({
         product_id: r.item.product_id,
         material_type: r.item.material_type.trim() || null,
-        size_id: r.item.size_id,
+        size_id: r.item.sizeResolution.size_id,
         color_id: r.item.color_id,
         linear_feet: r.validLf,
         additional_costs_cents: r.validAddCostsCents,
@@ -623,9 +634,7 @@ export function CustomerQuoteView({
                                   product_id: val,
                                   productIssue: null,
                                   material_type: '',
-                                  size_id: null,
-                                  sizeIssue: null,
-                                  fallbackSizeLabel: null,
+                                  sizeResolution: noSizeResolution(),
                                 });
                               }}
                               className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
@@ -698,9 +707,7 @@ export function CustomerQuoteView({
                                   closeAddSizeFor(item.rowKey);
                                   updateRow(item.rowKey, {
                                     material_type: e.target.value,
-                                    size_id: null,
-                                    sizeIssue: null,
-                                    fallbackSizeLabel: null,
+                                    sizeResolution: noSizeResolution(),
                                   });
                                 }}
                                 className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
@@ -740,7 +747,7 @@ export function CustomerQuoteView({
                                 {row.materialSizes.length > 0 ? (
                                   <>
                                     <select
-                                      value={item.size_id ?? ''}
+                                      value={item.sizeResolution.size_id ?? ''}
                                       onChange={(e) => {
                                         const val = e.target.value ? Number(e.target.value) : null;
                                         const size =
@@ -748,9 +755,11 @@ export function CustomerQuoteView({
                                             ? row.materialSizes.find((s) => s.id === val) ?? null
                                             : null;
                                         updateRow(item.rowKey, {
-                                          size_id: val,
-                                          sizeIssue: null,
-                                          fallbackSizeLabel: size ? formatSizeLabel(size) : null,
+                                          sizeResolution: {
+                                            size_id: val,
+                                            sizeIssue: null,
+                                            fallbackSizeLabel: size ? formatSizeLabel(size) : null,
+                                          },
                                         });
                                       }}
                                       className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
@@ -770,7 +779,7 @@ export function CustomerQuoteView({
                                     {row.hasSizeIssue && (
                                       <div className="text-[11px] font-semibold text-red-700">
                                         Size &ldquo;
-                                        {item.fallbackSizeLabel ?? `#${item.size_id}`}
+                                        {item.sizeResolution.fallbackSizeLabel ?? `#${item.sizeResolution.size_id}`}
                                         &rdquo; no longer available, please select a new one.
                                       </div>
                                     )}

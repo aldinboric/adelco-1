@@ -62,7 +62,7 @@ describe('parseMaterialsInput', () => {
     if (!parsed.ok) return;
     expect(parsed.materials).toHaveLength(1);
     expect(parsed.materials[0].priceCents).toBe(500);
-    expect(parsed.materials[0].sizes.map((s) => s.priceCents)).toEqual([500, 700]);
+    expect(parsed.materials[0].sizes.map((s) => s.price_per_lf_cents)).toEqual([500, 700]);
   });
 
   it('requires a Price on a Material Type that has no Sizes', () => {
@@ -260,10 +260,10 @@ describe('parseNewSizeInput (in-quote size addition)', () => {
     expect(parsed).toEqual({
       ok: true,
       size: {
-        priceCents: 900,
-        widthIn: 6,
+        price_per_lf_cents: 900,
+        width_in: 6,
         gauge: '24',
-        lengthFt: 12,
+        length_ft: 12,
         rendered: `24 ga 6" x 12'`,
       },
     });

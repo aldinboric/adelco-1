@@ -322,9 +322,7 @@ export function createQuoteRouter(): Router {
         return {
           product_id: productOk && prod ? prod.id : null,
           material_type: old.material_type ?? '',
-          size_id: size.size_id,
-          sizeIssue: size.sizeIssue,
-          fallbackSizeLabel: size.fallbackSizeLabel,
+          sizeResolution: size,
           color_id: colorOk && color ? color.id : null,
           linear_feet: old.linear_feet,
           additional_costs_cents: old.additional_costs_cents ?? 0,

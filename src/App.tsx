@@ -39,6 +39,7 @@ const VIEW_FALLBACK = (
   </div>
 );
 import { roleHasPermission, type PermissionKey } from '../shared/permissions.ts';
+import type { CopiedSizeResolution } from '../shared/size.ts';
 import type {
   AppTab,
   AuthUser,
@@ -77,9 +78,7 @@ interface CopyQuoteApiResponse {
   items: Array<{
     product_id: number | null;
     material_type: string;
-    size_id: number | null;
-    sizeIssue: 'deleted' | null;
-    fallbackSizeLabel: string | null;
+    sizeResolution: CopiedSizeResolution;
     color_id: number | null;
     linear_feet: number;
     additional_costs_cents: number;
@@ -336,9 +335,7 @@ export default function App() {
         rowKey: `copied-${Date.now()}-${idx}`,
         product_id: item.product_id,
         material_type: item.material_type ?? '',
-        size_id: item.size_id,
-        sizeIssue: item.sizeIssue,
-        fallbackSizeLabel: item.fallbackSizeLabel,
+        sizeResolution: item.sizeResolution,
         color_id: item.color_id,
         linear_feet_input: String(item.linear_feet),
         additional_costs_input:

@@ -214,3 +214,90 @@ describe('issued quote size label', () => {
     expect(product.materials[0].sizes.map((s: any) => s.gauge)).toEqual(['24']);
   });
 });
+
+describe('copying an issued quote re-resolves Sizes (#6)', () => {
+  it('re-resolves a Size that still exists silently, and flags one the catalog deleted', async () => {
+    const adminCookie = await login('admin', 'admin');
+
+    const color = await api('/colors', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: { name: 'Slate', hex_code: '#444444', price_per_lf_cents: 100 },
+    });
+    expect(color.status).toBe(201);
+    const colorId = color.body.id as number;
+
+    // Fascia / Aluminum with two Sizes: 26 ga 5" x 5' and 24 ga 6" x 8'.
+    const form = new FormData();
+    form.append('name', 'Fascia Copy');
+    form.append(
+      'materials',
+      JSON.stringify([
+        {
+          name: 'Aluminum',
+          sizes: [
+            { price_per_lf_cents: 500, gauge: '26', width_in: 5, length_ft: 5 },
+            { price_per_lf_cents: 900, gauge: '24', width_in: 6, length_ft: 8 },
+          ],
+        },
+      ])
+    );
+    const created = await api('/products', { method: 'POST', form, cookie: adminCookie });
+    expect(created.status).toBe(201);
+    const productId = created.body.id as number;
+    const sizes = created.body.materials[0].sizes as Array<{ id: number }>;
+    expect(sizes).toHaveLength(2);
+
+    // Issue a quote with one Line per Size.
+    const issued = await api('/quotes', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: {
+        quote_date: new Date().toISOString().slice(0, 10),
+        customer_name: 'Copy Customer',
+        items: [
+          { product_id: productId, material_type: 'Aluminum', size_id: sizes[0].id, color_id: colorId, linear_feet: 10 },
+          { product_id: productId, material_type: 'Aluminum', size_id: sizes[1].id, color_id: colorId, linear_feet: 12 },
+        ],
+      },
+    });
+    expect(issued.status).toBe(201);
+    const quoteId = issued.body.quote.id as number;
+
+    // The catalog drops the second Size (the re-save re-inserts the first with a new id).
+    const editForm = new FormData();
+    editForm.append('name', 'Fascia Copy');
+    editForm.append(
+      'materials',
+      JSON.stringify([
+        {
+          name: 'Aluminum',
+          sizes: [{ price_per_lf_cents: 500, gauge: '26', width_in: 5, length_ft: 5 }],
+        },
+      ])
+    );
+    const edited = await api(`/products/${productId}`, { method: 'PUT', form: editForm, cookie: adminCookie });
+    expect(edited.status).toBe(200);
+    const keptSizeId = edited.body.materials[0].sizes[0].id as number;
+    expect(keptSizeId).not.toBe(sizes[0].id);
+
+    const copy = await api(`/quotes/${quoteId}/copy`, { method: 'POST', cookie: adminCookie });
+    expect(copy.status).toBe(200);
+    expect(copy.body.source_quote_number).toBe(issued.body.quote.quote_number);
+    expect(copy.body.items).toHaveLength(2);
+
+    // The Size that still exists is re-resolved silently to its current id.
+    expect(copy.body.items[0].sizeResolution).toEqual({
+      size_id: keptSizeId,
+      sizeIssue: null,
+      fallbackSizeLabel: null,
+    });
+
+    // The deleted Size is flagged, carrying the label it was sold at.
+    expect(copy.body.items[1].sizeResolution).toEqual({
+      size_id: null,
+      sizeIssue: 'deleted',
+      fallbackSizeLabel: `24 ga 6" x 8'`,
+    });
+  });
+});

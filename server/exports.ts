@@ -152,7 +152,7 @@ function productMaterialNames(p: MetalProductWithMaterials): string[] {
 }
 
 /** Per-material size-count lines, matching the Products table's Sizes column: "Aluminum · 5 sizes". */
-function productMeasuresText(p: MetalProductWithMaterials): string {
+function sizesColumnText(p: MetalProductWithMaterials): string {
   return sizesColumnLines(p.materials).join('\n');
 }
 
@@ -805,7 +805,7 @@ export async function buildProductsExcel(products: MetalProductWithMaterials[]):
       '',
       sanitizeExcelText(p.name),
       sanitizeExcelText(productMaterialTypeText(p)),
-      productMeasuresText(p),
+      sizesColumnText(p),
       hasMaterials ? productPriceText(p) : p.price_per_lf_cents / 100,
       p.is_available ? 'Available' : 'Unavailable',
     ];
@@ -875,7 +875,7 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
       minW: 70,
       padX: 12,
       headerFontSize: 9.5,
-      cells: products.map((p) => ({ text: productMeasuresText(p), fontSize: 8 })),
+      cells: products.map((p) => ({ text: sizesColumnText(p), fontSize: 8 })),
     },
     {
       label: 'Price / lf',
@@ -948,7 +948,7 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, productMeasuresText(item), cols[3].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, sizesColumnText(item), cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
       height: rowH - 8,
       ellipsis: true,
@@ -1170,8 +1170,8 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
     const rowIdx = headerRowIdx + 1 + idx;
     Row.setHeight(ws, rowIdx, 40);
 
-    // The one shared Size label fills the measures column; a Line without a Size keeps the dash.
-    const measuresText = formatSizeLabel(item) ?? '—';
+    // The one shared Size label fills the existing Measures column; a Line without a Size keeps the dash.
+    const sizeText = formatSizeLabel(item) ?? '—';
 
     const values = hasAddCostDesc
       ? [
@@ -1180,7 +1180,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           sanitizeExcelText(item.material_type?.trim() || '—'),
           '',
           sanitizeExcelText(item.color_name),
-          measuresText,
+          sizeText,
           item.product_price_per_lf_cents / 100,
           item.combined_price_per_lf_cents / 100,
           item.linear_feet,
@@ -1195,7 +1195,7 @@ export async function buildSingleQuoteExcel(quote: ExportQuotePayload): Promise<
           sanitizeExcelText(item.material_type?.trim() || '—'),
           '',
           sanitizeExcelText(item.color_name),
-          measuresText,
+          sizeText,
           item.product_price_per_lf_cents / 100,
           item.combined_price_per_lf_cents / 100,
           item.linear_feet,

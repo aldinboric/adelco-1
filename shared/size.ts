@@ -93,6 +93,11 @@ export interface CopiedSizeResolution {
   fallbackSizeLabel: string | null;
 }
 
+/** A Line with no Size selected and nothing flagged. */
+export function noSizeResolution(): CopiedSizeResolution {
+  return { size_id: null, sizeIssue: null, fallbackSizeLabel: null };
+}
+
 /**
  * Re-resolves the Size of a copied Issued Quote line against the Material Type's current
  * Sizes: the matching Size where it still exists, otherwise a `deleted` flag carrying the
@@ -103,10 +108,9 @@ export function resolveCopiedSize(
   materialType: { sizes: readonly SavedSize[] } | null,
   oldDimensions: SizeDimensions
 ): CopiedSizeResolution {
-  const noSize = (): CopiedSizeResolution => ({ size_id: null, sizeIssue: null, fallbackSizeLabel: null });
-  if (!materialType || materialType.sizes.length === 0) return noSize();
+  if (!materialType || materialType.sizes.length === 0) return noSizeResolution();
   const oldLabel = formatSizeLabel(oldDimensions);
-  if (!oldLabel) return noSize();
+  if (!oldLabel) return noSizeResolution();
   const match = findSizeByDimensions(materialType.sizes, oldDimensions);
   if (match) return { size_id: match.id, sizeIssue: null, fallbackSizeLabel: null };
   return { size_id: null, sizeIssue: 'deleted', fallbackSizeLabel: oldLabel };
@@ -127,4 +131,34 @@ export function resolvePricePerLfCents(line: LinePriceSources): number | null {
   // A Product's own Price is legacy-only: it survives for rows that predate Material Types.
   const hasMaterialTypes = (line.materialTypes?.length ?? 0) > 0;
   return hasMaterialTypes ? null : priceOf(line.product);
+}
+
+/**
+ * ADR-0001 — a Material Type's general Price mirrors its first Size's Price while it
+ * has Sizes; with no Sizes, `fallbackCents` (the Type's own Price input) applies.
+ * Null when neither yields a usable Price.
+ */
+export function materialTypePriceCents(
+  sizes: readonly Priced[],
+  fallbackCents: number | null
+): number | null {
+  return sizes.length > 0 ? priceOf(sizes[0]) : fallbackCents;
+}
+
+/**
+ * #1 story 10 — the general Price (form string) of a Material Type after one of its Size
+ * rows is removed. While Sizes remain the Price is unchanged (the first-Size mirror is
+ * re-derived from the remaining Sizes when the Type is rendered or saved). When the last
+ * Size is removed, the Price keeps the current general Price — which the editor keeps
+ * mirrored to the first Size — falling back to the pre-removal first Size's only when no
+ * general Price was ever set, so removing every Size in any order leaves the Type sellable.
+ */
+export function generalPriceAfterSizeRemoval(
+  sizes: readonly { price: string }[],
+  removed: { price: string },
+  currentGeneralPrice: string
+): string {
+  const remaining = sizes.filter((s) => s !== removed);
+  if (remaining.length > 0) return currentGeneralPrice;
+  return currentGeneralPrice.trim() ? currentGeneralPrice : sizes[0]?.price ?? currentGeneralPrice;
 }

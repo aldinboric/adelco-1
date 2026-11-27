@@ -2,6 +2,7 @@ export type AppTab = 'quote' | 'issued' | 'products' | 'colors' | 'admin';
 
 // Role & permission types come from the shared module (single source of truth with the backend).
 import type { UserPermissions, UserRole } from '../shared/permissions.ts';
+import type { CopiedSizeResolution } from '../shared/size.ts';
 export type { PermissionKey, UserPermissions, UserRole } from '../shared/permissions.ts';
 
 export interface AuthUser {
@@ -64,21 +65,28 @@ export interface MetalProduct {
   materials: ProductMaterial[];
 }
 
+/** The editable fields of one Size row in the catalog editor and the in-quote add-size form. */
+export interface SizeFormInput {
+  price: string;
+  width: string;
+  gauge: string;
+  length: string;
+}
+
 export interface QuoteDraftItem {
   rowKey: string;
   product_id: number | null;
   material_type: string;
-  size_id: number | null;
+  /** The row's Size selection and any resolution flag, as one object (shared with the server's copy). */
+  sizeResolution: CopiedSizeResolution;
   color_id: number | null;
   linear_feet_input: string;
   additional_costs_input: string;
   additional_costs_description: string;
   note_input: string;
   productIssue?: 'unavailable' | 'deleted' | null;
-  sizeIssue?: 'deleted' | null;
   colorIssue?: 'unavailable' | 'deleted' | null;
   fallbackProductName?: string;
-  fallbackSizeLabel?: string | null;
   fallbackColorName?: string;
   fallbackColorHex?: string;
 }

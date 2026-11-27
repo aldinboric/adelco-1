@@ -483,8 +483,6 @@ export function MetalProductsView({
               </span>
             </>
           )}
-          <span className="text-slate-300" aria-hidden="true">·</span>
-          <span>Prices per linear ft live on each size, falling back to its material type</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">

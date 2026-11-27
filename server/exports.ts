@@ -517,6 +517,23 @@ function wrapPdfTextToWidth(
   return lines.join('\n');
 }
 
+/**
+ * Like wrapPdfTextToWidth, but preserves explicit '\n' line breaks (e.g. the
+ * per-material lines in Measures / Price): each existing line wraps independently.
+ */
+function wrapPdfMultilineToWidth(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  width: number,
+  fontSize: number,
+  bold = false
+): string {
+  return text
+    .split('\n')
+    .map((line) => wrapPdfTextToWidth(doc, line, width, fontSize, bold))
+    .join('\n');
+}
+
 function fitPdfColumns(
   doc: PDFKit.PDFDocument,
   usableW: number,
@@ -679,7 +696,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
     },
     {
       label: 'Status',
-      align: 'left',
+      align: 'right',
       minW: 70,
       padX: 12,
       headerFontSize: 9.5,
@@ -744,7 +761,7 @@ export async function buildColorsPdf(colors: MetalColorRow[]): Promise<Buffer> {
       cols[4].x + 6,
       y,
       rowH,
-      { width: cols[4].w - 12, height: rowH - 6, ellipsis: true }
+      { width: cols[4].w - 12, height: rowH - 6, align: 'right', ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);
@@ -887,7 +904,7 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
     },
     {
       label: 'Status',
-      align: 'left',
+      align: 'right',
       minW: 70,
       padX: 12,
       headerFontSize: 9.5,
@@ -906,13 +923,32 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
   const productImageBuffers = await Promise.all(products.map((p) => loadImageBuffer(p.image_path, 72)));
 
   for (let i = 0; i < products.length; i++) {
-    if (y > doc.page.height - 80) {
+    const item = products[i];
+
+    // Dynamic row height: wrap every text cell to its column width and grow the
+    // row so the tallest cell fits in full — no more "..." truncation. Existing
+    // '\n' lines (Measures / Price per material) are preserved while wrapping.
+    const wrapCells = [
+      { text: item.name, width: cols[1].w - 54 },
+      { text: productMaterialTypeText(item), width: cols[2].w - 12 },
+      { text: sizesColumnText(item), width: cols[3].w - 12 },
+      { text: productPriceText(item), width: cols[4].w - 12 },
+    ];
+    let contentH = 0;
+    const wrappedCells = wrapCells.map((c) => {
+      const wrapped = wrapPdfMultilineToWidth(doc, c.text, c.width, 9.5);
+      doc.font('Helvetica').fontSize(9.5);
+      const h = wrapped ? measurePdfVisualTextHeight(doc, wrapped, { width: c.width }) : 0;
+      contentH = Math.max(contentH, h);
+      return wrapped;
+    });
+    const rowH = Math.max(40, Math.ceil(contentH) + 10);
+
+    if (y + rowH > doc.page.height - 40) {
       doc.addPage();
       y = drawHeader(40);
     }
 
-    const item = products[i];
-    const rowH = 40;
     if (i % 2 === 1) {
       doc.rect(40, y, doc.page.width - 80, rowH).fill(NEUTRAL_BG);
     }
@@ -938,26 +974,22 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
       height: rowH - 8,
       ellipsis: true,
     });
-    drawPdfCenteredText(doc, item.name, cols[1].x + 48, y, rowH, {
+    drawPdfCenteredText(doc, wrappedCells[0], cols[1].x + 48, y, rowH, {
       width: cols[1].w - 54,
       height: rowH - 8,
-      ellipsis: true,
     });
-    drawPdfCenteredText(doc, productMaterialTypeText(item), cols[2].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, wrappedCells[1], cols[2].x + 6, y, rowH, {
       width: cols[2].w - 12,
       height: rowH - 8,
-      ellipsis: true,
     });
-    drawPdfCenteredText(doc, sizesColumnText(item), cols[3].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, wrappedCells[2], cols[3].x + 6, y, rowH, {
       width: cols[3].w - 12,
       height: rowH - 8,
-      ellipsis: true,
     });
-    drawPdfCenteredText(doc, productPriceText(item), cols[4].x + 6, y, rowH, {
+    drawPdfCenteredText(doc, wrappedCells[3], cols[4].x + 6, y, rowH, {
       width: cols[4].w - 12,
       align: 'right',
       height: rowH - 8,
-      ellipsis: true,
     });
     doc.fillColor(item.is_available ? BRAND_GREEN : '#DC2626');
     drawPdfCenteredText(
@@ -966,7 +998,7 @@ export async function buildProductsPdf(products: MetalProductWithMaterials[]): P
       cols[5].x + 6,
       y,
       rowH,
-      { width: cols[5].w - 12, height: rowH - 8, ellipsis: true }
+      { width: cols[5].w - 12, height: rowH - 8, align: 'right', ellipsis: true }
     );
 
     drawPdfRowBorders(doc, y, rowH, cols);

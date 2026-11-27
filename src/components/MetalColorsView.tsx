@@ -184,8 +184,6 @@ export function MetalColorsView({
           <span className="font-semibold text-slate-800">{colors.length} total colors</span>
           <span className="text-slate-300" aria-hidden="true">·</span>
           <span>{availableCount} available for new quotes</span>
-          <span className="text-slate-300" aria-hidden="true">·</span>
-          <span>Currency: CAD / linear ft</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">

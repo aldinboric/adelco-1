@@ -74,7 +74,6 @@ export function CustomerQuoteView({
   // A Preview — a Product with no Material Types — has nothing to price a Line from, so it
   // never reaches the picker. It becomes selectable as soon as its first Material Type is saved.
   const availableProducts = products.filter((p) => p.is_available === 1 && !isPreview(p.materials));
-  const previewCount = products.filter((p) => isPreview(p.materials)).length;
   const availableColors = colors.filter((c) => c.is_available === 1);
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
@@ -553,7 +552,7 @@ export function CustomerQuoteView({
             </div>
             <h3 className="text-base font-semibold text-slate-900">Start a Customer Quote</h3>
             <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">
-              Add one or more products from your catalog. For each item, choose the product, then its material type, size, and color, and finally enter the linear feet to calculate the total price in CAD.
+              Add one or more products from your catalog. For each item, choose the product, then its material type, size, and color, and finally enter the linear feet to calculate the total price in CAD
             </p>
             <button
               type="button"
@@ -567,13 +566,6 @@ export function CustomerQuoteView({
             {availableProducts.length === 0 && (
               <p className="mt-3 text-xs font-medium text-red-600">
                 No available products found. Enable or add products in Products first.
-              </p>
-            )}
-            {previewCount > 0 && (
-              <p className="mt-1.5 text-xs text-slate-500">
-                {previewCount === 1
-                  ? 'One product is a Preview and becomes selectable once its first material type is added.'
-                  : `${previewCount} products are Previews and become selectable once their first material type is added.`}
               </p>
             )}
           </div>
@@ -644,7 +636,7 @@ export function CustomerQuoteView({
                               }`}
                             >
                               <option value="">-- Select product --</option>
-                              {availableProducts.map((p, pIdx) => {
+                              {availableProducts.map((p) => {
                                 // Every product here has Material Types: a Preview is never offered.
                                 const mats = p.materials;
                                 const priceLabel = `${mats.length} material${
@@ -654,7 +646,7 @@ export function CustomerQuoteView({
                                 )}/lf`;
                                 return (
                                   <option key={p.id} value={p.id}>
-                                    #{pIdx + 1} · {p.name} ({priceLabel})
+                                    {p.name} ({priceLabel})
                                   </option>
                                 );
                               })}

@@ -447,7 +447,7 @@ export default function App() {
                 AdelCo Inc.
               </span>
               <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                Quote & Catalog
+                Home Services
               </span>
             </div>
           </div>

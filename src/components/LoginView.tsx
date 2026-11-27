@@ -61,7 +61,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
           </div>
           <h1 className="mt-3.5 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
           <p className="mt-1 text-xs font-medium text-slate-500">
-            Home Services · Quote & Catalog Workspace
+            Home Services
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
           <div className="mb-5 border-b border-slate-100 pb-4">
             <h2 className="text-base font-bold text-slate-900">Sign in to your account</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Enter the credentials provided by your AdelCo Inc. administrator.
+              Enter the credentials provided by your AdelCo Inc. administrator
             </p>
           </div>
 

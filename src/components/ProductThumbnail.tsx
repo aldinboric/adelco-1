@@ -19,7 +19,7 @@ export function ProductThumbnail({
   if (!url || failed) {
     return (
       <div
-        className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-slate-200 bg-[#f7f7f7] text-slate-400`}
+        className={`${sizeClass} flex shrink-0 items-center justify-center rounded-lg border border-slate-200/90 bg-slate-50 text-slate-400`}
         aria-label={alt}
       >
         <Layers className="h-4 w-4" />
@@ -33,7 +33,7 @@ export function ProductThumbnail({
       alt={alt}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className={`${sizeClass} shrink-0 rounded border border-slate-200 bg-[#f7f7f7] object-contain p-0.5`}
+      className={`${sizeClass} shrink-0 rounded-lg border border-slate-200/90 bg-slate-50 object-contain p-0.5`}
     />
   );
 }

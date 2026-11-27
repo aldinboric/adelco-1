@@ -12,9 +12,9 @@ export function TableSkeleton({ rows = 4, cells, rowHeightClass = 'h-12' }: Tabl
       {Array.from({ length: rows }, (_, n) => (
         <div key={n} className={`flex ${rowHeightClass} items-center gap-4 py-2`}>
           {cells.map((c, i) => (
-            <div key={i} className={`${c} animate-pulse rounded bg-slate-200`} />
+            <div key={i} className={`${c} animate-pulse rounded-md bg-slate-200/80`} />
           ))}
-          <div className="ml-auto h-4 w-20 animate-pulse rounded bg-slate-200" />
+          <div className="ml-auto h-4 w-20 animate-pulse rounded-md bg-slate-200/80" />
         </div>
       ))}
     </div>

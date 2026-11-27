@@ -470,20 +470,20 @@ export function MetalProductsView({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-5 py-3.5">
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          <span className="font-medium text-slate-700">{products.length} total products</span>
-          <span aria-hidden="true">·</span>
+      <div className="ui-card flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-500">
+          <span className="font-semibold text-slate-800">{products.length} total products</span>
+          <span className="text-slate-300" aria-hidden="true">·</span>
           <span>{availableCount} available for new quotes</span>
           {previewCount > 0 && (
             <>
-              <span aria-hidden="true">·</span>
-              <span className="font-medium text-amber-700">
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 border border-amber-200">
                 {previewCount} preview{previewCount === 1 ? '' : 's'}
               </span>
             </>
           )}
-          <span aria-hidden="true">·</span>
+          <span className="text-slate-300" aria-hidden="true">·</span>
           <span>Prices per linear ft live on each size, falling back to its material type</span>
         </div>
 
@@ -496,11 +496,7 @@ export function MetalProductsView({
             />
           )}
           {canManage && (
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#2a6f3b] px-4 py-2 text-xs font-medium text-white hover:bg-[#21572e] whitespace-nowrap shrink-0 transition-colors"
-            >
+            <button type="button" onClick={openAddModal} className="ui-btn-green">
               <Plus className="h-3.5 w-3.5" />
               Add Product
             </button>
@@ -509,12 +505,12 @@ export function MetalProductsView({
       </div>
 
       {/* Table (ID, Product, Sizes, Status, Actions — prices stay out of Sizes) */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="ui-card overflow-hidden">
         {loading ? (
           <TableSkeleton rows={4} cells={['h-4 w-8', 'h-10 w-10', 'h-4 w-56']} />
         ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded border border-slate-200 bg-[#f7f7f7] text-slate-400">
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
               <ImagePlus className="h-5 w-5" />
             </div>
             <h3 className="text-sm font-semibold text-slate-900">No products yet</h3>
@@ -522,11 +518,7 @@ export function MetalProductsView({
               Add products or profiles with base prices per linear foot. Colors are selected later during quoting.
             </p>
             {canManage && (
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-[#084091] px-4 py-2 text-xs font-medium text-white hover:bg-[#063273]"
-              >
+              <button type="button" onClick={openAddModal} className="ui-btn-primary mt-4">
                 <Plus className="h-3.5 w-3.5" />
                 Add First Product
               </button>
@@ -536,16 +528,16 @@ export function MetalProductsView({
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-left text-sm">
               <thead>
-                <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
+                <tr className="ui-table-head">
                   {canReorder && <th className="px-2 py-3 w-10" aria-label="Reorder" />}
                   <th className="px-4 py-3 w-16 text-left">#</th>
                   <th className="px-4 py-3 text-left">Product</th>
                   <th className="px-4 py-3 w-56 text-left">Sizes</th>
-                  <th className="px-4 py-3 w-28 text-left">Status</th>
+                  <th className="px-4 py-3 w-32 text-left">Status</th>
                   {canManage && <th className="px-4 py-3 w-52 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {orderedProducts.map((product, idx) => {
                   const unavailable = product.is_available === 0;
                   const status = productStatus(product.materials, product.is_available === 1);
@@ -570,20 +562,18 @@ export function MetalProductsView({
                         setDragId(null);
                         setOverId(null);
                       }}
-                      className={`divide-x divide-slate-200 transition-colors ${
+                      className={`transition-colors ${
                         isDragging
                           ? 'opacity-40'
                           : isDropTarget
-                          ? 'bg-[#084091]/10'
+                          ? 'bg-[#eef4fc]'
                           : unavailable
-                          ? 'bg-slate-100/80 text-slate-400'
-                          : idx % 2 === 1
-                          ? 'bg-[#f7f7f7]/60 hover:bg-slate-100/60'
-                          : 'bg-white hover:bg-slate-50'
+                          ? 'bg-slate-50/80 text-slate-400'
+                          : 'bg-white hover:bg-slate-50/70'
                       }`}
                     >
                       {canReorder && (
-                        <td className="px-2 py-2 text-left">
+                        <td className="px-2 py-3 text-left">
                           <span
                             className="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
                             title="Drag to reorder"
@@ -592,17 +582,17 @@ export function MetalProductsView({
                           </span>
                         </td>
                       )}
-                      <td className="px-4 py-2 text-left font-mono text-xs tabular-nums text-slate-500">
+                      <td className="px-4 py-3 text-left font-mono text-xs tabular-nums text-slate-400">
                         {idx + 1}
                       </td>
-                      <td className="px-4 py-2 text-left">
+                      <td className="px-4 py-3 text-left">
                         <div className="flex items-center gap-3">
                           <div className={`shrink-0 ${unavailable ? 'opacity-50' : ''}`}>
                             <ProductThumbnail imagePath={product.image_path} alt={product.name} />
                           </div>
                           <span
                             className={`font-medium ${
-                              unavailable ? 'text-slate-500 line-through' : 'text-slate-900'
+                              unavailable ? 'text-slate-400 line-through' : 'text-slate-900'
                             }`}
                           >
                             {product.name}
@@ -610,20 +600,20 @@ export function MetalProductsView({
                         </div>
                       </td>
                       <td
-                        className={`px-4 py-2 text-left text-xs leading-relaxed ${
-                          unavailable ? 'text-slate-400' : 'text-slate-700'
+                        className={`px-4 py-3 text-left text-xs leading-relaxed ${
+                          unavailable ? 'text-slate-400' : 'text-slate-600'
                         }`}
                       >
                         <SizesCell product={product} />
                       </td>
-                      <td className="px-4 py-2 text-left text-xs font-medium">
+                      <td className="px-4 py-3 text-left">
                         <span
                           className={
                             status === 'preview'
-                              ? 'text-amber-700'
+                              ? 'inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700'
                               : status === 'unavailable'
-                                ? 'text-red-700'
-                                : 'text-[#2a6f3b]'
+                                ? 'ui-badge-unavailable'
+                                : 'ui-badge-available'
                           }
                           title={status === 'preview' ? PREVIEW_STATUS_HINT : undefined}
                         >
@@ -631,12 +621,12 @@ export function MetalProductsView({
                         </span>
                       </td>
                       {canManage && (
-                        <td className="px-4 py-2 text-right">
+                        <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => openEditModal(product)}
-                              className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors"
                             >
                               <Pencil className="h-3 w-3" />
                               Edit
@@ -644,7 +634,7 @@ export function MetalProductsView({
                             <button
                               type="button"
                               onClick={() => handleToggleAvailability(product)}
-                              className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors"
                             >
                               {unavailable ? (
                                 <>
@@ -661,7 +651,7 @@ export function MetalProductsView({
                             <button
                               type="button"
                               onClick={() => setDeleteTarget(product)}
-                              className="inline-flex items-center rounded border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50"
+                              className="inline-flex cursor-pointer items-center rounded-lg border border-red-200/80 bg-white p-1.5 text-red-600 hover:bg-red-50 transition-colors"
                               title="Delete product"
                               aria-label={`Delete ${product.name}`}
                             >
@@ -681,210 +671,115 @@ export function MetalProductsView({
 
       {/* Add / Edit Product Modal — centered, compact width, scrollable body */}
       {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h3 className="text-base font-semibold text-slate-900">
-                {editingProduct
-                  ? `Edit Product #${orderedProducts.findIndex((p) => p.id === editingProduct.id) + 1}`
-                  : 'Add Product'}
-              </h3>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-              <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {formError && (
-                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                  {formError}
-                </div>
-              )}
-
-              {willSaveAsPreview && (
-                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  <span className="font-semibold">
-                    Saving without material types creates a Preview.
-                  </span>{' '}
-                  A Preview stays visibly incomplete and cannot be quoted until its first material
-                  type is added.
-                </div>
-              )}
-
-              {/* ADR-0001: prices live on Material Types and Sizes, so this form asks for
-                  none. The legacy product-level price stays in the schema, unwritten, so
-                  nothing already recorded is lost. */}
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Product Name
-                </label>
-                <input
-                  type="text"
-                  maxLength={120}
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  placeholder='e.g. 29 Ga Ribbed Roof Panel (36" Coverage)'
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
-                  required
-                />
+        <div className="ui-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="ui-modal-panel flex max-h-[85vh] max-w-lg flex-col overflow-hidden">
+              <div className="ui-modal-header shrink-0">
+                <h3 className="text-base font-semibold text-slate-900">
+                  {editingProduct
+                    ? `Edit Product #${orderedProducts.findIndex((p) => p.id === editingProduct.id) + 1}`
+                    : 'Add Product'}
+                </h3>
+                <button type="button" onClick={closeModal} className="ui-icon-btn" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
-              <div>
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Material Types <span className="font-normal text-slate-400">(optional)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addMaterialRow}
-                    className="inline-flex shrink-0 items-center gap-1 rounded border border-[#084091] bg-white px-2 py-1 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add material
-                  </button>
-                </div>
+              <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+                <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+                  {formError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
+                      {formError}
+                    </div>
+                  )}
 
-                <div className="space-y-2">
-                  {materialRows.map((row, idx) => {
-                    const hasSizes = row.sizes.length > 0;
-                    // ADR-0001: with Sizes the general price mirrors the first Size's.
-                    const mirrorCents = materialTypePriceCents(
-                      row.sizes.map((s) => ({ price_per_lf_cents: dollarsInputToCents(s.price) })),
-                      dollarsInputToCents(row.price)
-                    );
-                    return (
-                      <div
-                        key={row.key}
-                        className="rounded-md border border-slate-200 bg-[#f7f7f7] p-2.5"
+                  {willSaveAsPreview && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+                      <span className="font-semibold">
+                        Saving without material types creates a Preview.
+                      </span>{' '}
+                      A Preview stays visibly incomplete and cannot be quoted until its first material
+                      type is added.
+                    </div>
+                  )}
+
+                  {/* ADR-0001: prices live on Material Types and Sizes, so this form asks for
+                      none. The legacy product-level price stays in the schema, unwritten, so
+                      nothing already recorded is lost. */}
+                  <div>
+                    <label className="ui-label">Product Name</label>
+                    <input
+                      type="text"
+                      maxLength={120}
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder='e.g. 29 Ga Ribbed Roof Panel (36" Coverage)'
+                      className="ui-input"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Material Types <span className="font-normal text-slate-400">(optional)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addMaterialRow}
+                        className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-[#084091] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => toggleMaterialExpanded(row.key)}
-                            aria-expanded={row.expanded}
-                            title={row.expanded ? 'Hide sizes' : 'Show sizes'}
-                            aria-label={`${row.expanded ? 'Hide' : 'Show'} sizes for material #${idx + 1}`}
-                            className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200"
+                        <Plus className="h-3 w-3" />
+                        Add material
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {materialRows.map((row, idx) => {
+                        const hasSizes = row.sizes.length > 0;
+                        // ADR-0001: with Sizes the general price mirrors the first Size's.
+                        const mirrorCents = materialTypePriceCents(
+                          row.sizes.map((s) => ({ price_per_lf_cents: dollarsInputToCents(s.price) })),
+                          dollarsInputToCents(row.price)
+                        );
+                        return (
+                          <div
+                            key={row.key}
+                            className="rounded-xl border border-slate-200/90 bg-slate-50/80 p-3"
                           >
-                            {row.expanded ? (
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                          <input
-                            type="text"
-                            maxLength={100}
-                            value={row.name}
-                            onChange={(e) => updateMaterialRow(row.key, { name: e.target.value })}
-                            placeholder={`Material #${idx + 1} — e.g. Aluminum`}
-                            aria-label={`Material type name #${idx + 1}`}
-                            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                          />
-                          {hasSizes ? (
-                            <span
-                              title="This price follows the first size"
-                              className="w-28 shrink-0 truncate rounded-md border border-dashed border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-500"
-                            >
-                              {mirrorCents === null ? '—' : formatCAD(mirrorCents)}
-                            </span>
-                          ) : (
-                            <div className="relative w-28 shrink-0">
-                              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
-                                $
-                              </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleMaterialExpanded(row.key)}
+                                aria-expanded={row.expanded}
+                                title={row.expanded ? 'Hide sizes' : 'Show sizes'}
+                                aria-label={`${row.expanded ? 'Hide' : 'Show'} sizes for material #${idx + 1}`}
+                                className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-slate-200/70"
+                              >
+                                {row.expanded ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                              </button>
                               <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={row.price}
-                                onChange={(e) => updateMaterialRow(row.key, { price: e.target.value })}
-                                placeholder="0.00"
-                                title="Price per linear ft for this material (CAD)"
-                                aria-label={`Price per linear ft for material #${idx + 1}`}
-                                className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                type="text"
+                                maxLength={100}
+                                value={row.name}
+                                onChange={(e) => updateMaterialRow(row.key, { name: e.target.value })}
+                                placeholder={`Material #${idx + 1} — e.g. Aluminum`}
+                                aria-label={`Material type name #${idx + 1}`}
+                                className="min-w-0 flex-1 rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                               />
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => requestRemoveMaterialRow(row)}
-                            className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                            title="Remove material type"
-                            aria-label={`Remove material type #${idx + 1}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-
-                        <div className="mt-1.5 flex items-center justify-between gap-2 pl-7">
-                          <span className="text-[10px] text-slate-500">
-                            {hasSizes
-                              ? `${sizeCountLabel(row.sizes.length)} · price follows the first size`
-                              : 'No sizes — quoted at the price above.'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => addSizeRow(row.key)}
-                            className="inline-flex shrink-0 items-center gap-1 rounded border border-[#084091] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Add size
-                          </button>
-                        </div>
-
-                        {row.expanded && hasSizes && (
-                          <div className="mt-1.5 space-y-1.5 border-t border-slate-200 pt-1.5 pl-7">
-                            {row.sizes.map((size, sizeIdx) => (
-                              <div key={size.key} className="flex items-center gap-1.5">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={size.width}
-                                  onChange={(e) =>
-                                    updateSizeRow(row.key, size.key, { width: e.target.value })
-                                  }
-                                  placeholder='Width (in)'
-                                  title="Width (in) — optional"
-                                  aria-label={`Width (in) for size #${sizeIdx + 1} of material #${idx + 1}`}
-                                  className="w-[82px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                                />
-                                <input
-                                  type="text"
-                                  maxLength={20}
-                                  value={size.gauge}
-                                  onChange={(e) =>
-                                    updateSizeRow(row.key, size.key, { gauge: e.target.value })
-                                  }
-                                  placeholder="Gauge"
-                                  title="Gauge — optional"
-                                  aria-label={`Gauge for size #${sizeIdx + 1} of material #${idx + 1}`}
-                                  className="w-[72px] rounded-md border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                                />
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={size.length}
-                                  onChange={(e) =>
-                                    updateSizeRow(row.key, size.key, { length: e.target.value })
-                                  }
-                                  placeholder="Length (ft)"
-                                  title="Length (ft) — optional"
-                                  aria-label={`Length (ft) for size #${sizeIdx + 1} of material #${idx + 1}`}
-                                  className="w-[82px] rounded-md border border-slate-300 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
-                                />
-                                <div className="relative w-[92px]">
+                              {hasSizes ? (
+                                <span
+                                  title="This price follows the first size"
+                                  className="w-28 shrink-0 truncate rounded-lg border border-dashed border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs tabular-nums text-slate-500"
+                                >
+                                  {mirrorCents === null ? '—' : formatCAD(mirrorCents)}
+                                </span>
+                              ) : (
+                                <div className="relative w-28 shrink-0">
                                   <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
                                     $
                                   </span>
@@ -892,119 +787,199 @@ export function MetalProductsView({
                                     type="number"
                                     step="0.01"
                                     min="0"
-                                    value={size.price}
-                                    onChange={(e) =>
-                                      updateSizeRow(row.key, size.key, { price: e.target.value })
-                                    }
+                                    value={row.price}
+                                    onChange={(e) => updateMaterialRow(row.key, { price: e.target.value })}
                                     placeholder="0.00"
-                                    title="Price per linear ft for this size (CAD)"
-                                    aria-label={`Price per linear ft for size #${sizeIdx + 1} of material #${idx + 1}`}
-                                    className="w-full rounded-md border border-slate-300 bg-white py-1 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                    title="Price per linear ft for this material (CAD)"
+                                    aria-label={`Price per linear ft for material #${idx + 1}`}
+                                    className="w-full rounded-lg border border-slate-300/90 bg-white py-1.5 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
                                   />
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => removeSizeRow(row.key, size.key)}
-                                  className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                                  title="Remove size"
-                                  aria-label={`Remove size #${sizeIdx + 1} of material #${idx + 1}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => requestRemoveMaterialRow(row)}
+                                className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                title="Remove material type"
+                                aria-label={`Remove material type #${idx + 1}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-between gap-2 pl-7">
+                              <span className="text-[10px] text-slate-500">
+                                {hasSizes
+                                  ? `${sizeCountLabel(row.sizes.length)} · price follows the first size`
+                                  : 'No sizes — quoted at the price above.'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => addSizeRow(row.key)}
+                                className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-[#084091] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
+                              >
+                                <Plus className="h-3 w-3" />
+                                Add size
+                              </button>
+                            </div>
+
+                            {row.expanded && hasSizes && (
+                              <div className="mt-2 space-y-1.5 border-t border-slate-200/80 pt-2 pl-7">
+                                {row.sizes.map((size, sizeIdx) => (
+                                  <div key={size.key} className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={size.width}
+                                      onChange={(e) =>
+                                        updateSizeRow(row.key, size.key, { width: e.target.value })
+                                      }
+                                      placeholder='Width (in)'
+                                      title="Width (in) — optional"
+                                      aria-label={`Width (in) for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                      className="w-[82px] rounded-lg border border-slate-300/90 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                    />
+                                    <input
+                                      type="text"
+                                      maxLength={20}
+                                      value={size.gauge}
+                                      onChange={(e) =>
+                                        updateSizeRow(row.key, size.key, { gauge: e.target.value })
+                                      }
+                                      placeholder="Gauge"
+                                      title="Gauge — optional"
+                                      aria-label={`Gauge for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                      className="w-[72px] rounded-lg border border-slate-300/90 bg-white px-2 py-1 text-center font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                    />
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={size.length}
+                                      onChange={(e) =>
+                                        updateSizeRow(row.key, size.key, { length: e.target.value })
+                                      }
+                                      placeholder="Length (ft)"
+                                      title="Length (ft) — optional"
+                                      aria-label={`Length (ft) for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                      className="w-[82px] rounded-lg border border-slate-300/90 bg-white px-2 py-1 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                    />
+                                    <div className="relative w-[92px]">
+                                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-400">
+                                        $
+                                      </span>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={size.price}
+                                        onChange={(e) =>
+                                          updateSizeRow(row.key, size.key, { price: e.target.value })
+                                        }
+                                        placeholder="0.00"
+                                        title="Price per linear ft for this size (CAD)"
+                                        aria-label={`Price per linear ft for size #${sizeIdx + 1} of material #${idx + 1}`}
+                                        className="w-full rounded-lg border border-slate-300/90 bg-white py-1 pl-5 pr-2 text-right font-mono text-xs tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[#084091] focus:outline-none"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSizeRow(row.key, size.key)}
+                                      className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                      title="Remove size"
+                                      aria-label={`Remove size #${sizeIdx + 1} of material #${idx + 1}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
                           </div>
+                        );
+                      })}
+                      {materialRows.length === 0 && (
+                        <p className="rounded-xl border border-dashed border-slate-300/80 px-3 py-2.5 text-[11px] text-slate-500">
+                          No material types — add one to make this product quotable.
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-500">
+                      Expand a material type to add its sizes — each size records gauge, width, length, and
+                      its own price. A material type with no sizes quotes at its own price. Both appear as
+                      choices in the Customer Quote.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="ui-label">Product Thumbnail Image</label>
+                    <div className="flex items-center gap-4 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3.5">
+                      {imagePreviewUrl && !removeImage ? (
+                        <img
+                          src={imagePreviewUrl}
+                          alt="Product preview"
+                          className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1"
+                        />
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-slate-400">
+                          <ImagePlus className="h-5 w-5" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <label className="ui-btn-secondary py-1.5">
+                          <ImagePlus className="h-3.5 w-3.5 text-[#084091]" />
+                          Choose Image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="sr-only"
+                          />
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Automatically resized to a compact 128×128 thumbnail for tables & PDFs.
+                        </p>
+                        {imagePreviewUrl && !removeImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImageFile(null);
+                              setImagePreviewUrl(null);
+                              setRemoveImage(true);
+                            }}
+                            className="text-[11px] font-medium text-red-600 hover:underline"
+                          >
+                            Remove image
+                          </button>
                         )}
                       </div>
-                    );
-                  })}
-                  {materialRows.length === 0 && (
-                    <p className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500">
-                      No material types — add one to make this product quotable.
-                    </p>
-                  )}
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Expand a material type to add its sizes — each size records gauge, width, length, and
-                  its own price. A material type with no sizes quotes at its own price. Both appear as
-                  choices in the Customer Quote.
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Product Thumbnail Image
-                </label>
-                <div className="flex items-center gap-4 rounded-md border border-slate-200 bg-[#f7f7f7] p-3">
-                  {imagePreviewUrl && !removeImage ? (
-                    <img
-                      src={imagePreviewUrl}
-                      alt="Product preview"
-                      className="h-14 w-14 shrink-0 rounded border border-slate-300 bg-white object-contain p-1"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-slate-400">
-                      <ImagePlus className="h-5 w-5" />
                     </div>
-                  )}
-
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-                      <ImagePlus className="h-3.5 w-3.5 text-[#084091]" />
-                      Choose Image
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="sr-only"
-                      />
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Automatically resized to a compact 128×128 thumbnail for tables & PDFs.
-                    </p>
-                    {imagePreviewUrl && !removeImage && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImageFile(null);
-                          setImagePreviewUrl(null);
-                          setRemoveImage(true);
-                        }}
-                        className="text-[11px] font-medium text-red-600 hover:underline"
-                      >
-                        Remove image
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
 
-              </div>
-
-              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-md bg-[#084091] px-4 py-2 text-sm font-medium text-white hover:bg-[#063273] disabled:bg-slate-400"
-                >
-                  {saving
-                    ? 'Saving...'
-                    : willSaveAsPreview
-                      ? 'Save as Preview'
-                      : editingProduct
-                        ? 'Save Changes'
-                        : 'Add Product'}
-                </button>
-              </div>
-            </form>
+                <div className="ui-modal-footer shrink-0">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    disabled={saving}
+                    className="ui-btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving} className="ui-btn-primary">
+                    {saving
+                      ? 'Saving...'
+                      : willSaveAsPreview
+                        ? 'Save as Preview'
+                        : editingProduct
+                          ? 'Save Changes'
+                          : 'Add Product'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

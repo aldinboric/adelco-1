@@ -426,11 +426,11 @@ export function CustomerQuoteView({
   return (
     <div className="space-y-4">
       {/* Quote Header Metadata Bar */}
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="ui-card p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 lg:max-w-2xl">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 Customer Name <span className="font-normal text-slate-400">(optional)</span>
               </label>
               <input
@@ -439,12 +439,12 @@ export function CustomerQuoteView({
                 value={draft.customer_name}
                 onChange={(e) => onChangeDraft({ ...draft, customer_name: e.target.value })}
                 placeholder="First & Last Name"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input"
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 Seller Name <span className="font-normal text-slate-400">(optional)</span>
               </label>
               <input
@@ -453,19 +453,17 @@ export function CustomerQuoteView({
                 value={draft.seller_name}
                 onChange={(e) => onChangeDraft({ ...draft, seller_name: e.target.value })}
                 placeholder="First & Last Name"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input"
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Quote Date
-              </label>
+              <label className="ui-label">Quote Date</label>
               <input
                 type="date"
                 value={draft.quote_date}
                 onChange={(e) => onChangeDraft({ ...draft, quote_date: e.target.value })}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input font-mono"
               />
             </div>
           </div>
@@ -476,7 +474,7 @@ export function CustomerQuoteView({
                 <button
                   type="button"
                   onClick={onClearDraftConfirmed}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
+                  className="ui-btn-secondary"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Clear Draft
@@ -487,7 +485,7 @@ export function CustomerQuoteView({
                       type="button"
                       disabled={exporting !== null}
                       onClick={() => handleExportDraft('excel')}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
+                      className="ui-btn-secondary"
                     >
                       <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
                       {exporting === 'excel' ? 'Exporting...' : 'Export Excel'}
@@ -496,7 +494,7 @@ export function CustomerQuoteView({
                       type="button"
                       disabled={exporting !== null}
                       onClick={() => handleExportDraft('pdf')}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0"
+                      className="ui-btn-secondary"
                     >
                       <FileText className="h-3.5 w-3.5 text-[#084091]" />
                       {exporting === 'pdf' ? 'Exporting...' : 'Export PDF'}
@@ -507,7 +505,7 @@ export function CustomerQuoteView({
                   type="button"
                   disabled={issuing || hasAnySelectionError}
                   onClick={handleIssueQuote}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#2a6f3b] px-4 py-2 text-xs font-semibold text-white hover:bg-[#21572e] disabled:bg-slate-400 whitespace-nowrap shrink-0 transition-colors"
+                  className="ui-btn-green"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   {issuing ? 'Issuing Quote...' : 'Issue Quote'}
@@ -518,11 +516,10 @@ export function CustomerQuoteView({
         </div>
 
         {draft.copiedFromQuoteNumber && (
-          <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3 text-xs text-slate-600">
-            <span className="font-semibold text-[#084091]">
+          <div className="mt-3.5 flex items-center gap-2 border-t border-slate-100 pt-3 text-xs text-slate-600">
+            <span className="rounded-full bg-[#eef4fc] px-2.5 py-0.5 font-semibold text-[#084091]">
               Copied from Quote {draft.copiedFromQuoteNumber}
             </span>
-            <span aria-hidden="true">·</span>
             <span>Prices refreshed from current Products and Colors tables.</span>
           </div>
         )}
@@ -530,7 +527,7 @@ export function CustomerQuoteView({
 
       {/* Warnings / Errors */}
       {hasAnySelectionError && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
           <div>
             <span className="font-semibold">Action required before issuing:</span> One or more
@@ -541,16 +538,19 @@ export function CustomerQuoteView({
       )}
 
       {validationError && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-xs font-medium text-red-800">
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
           <span>{validationError}</span>
         </div>
       )}
 
       {/* Working Quote Table */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="ui-card overflow-hidden">
         {draft.items.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef4fc] text-[#084091]">
+              <Plus className="h-5 w-5" />
+            </div>
             <h3 className="text-base font-semibold text-slate-900">Start a Customer Quote</h3>
             <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">
               Add one or more products from your catalog. For each item, choose the product, then its material type, size, and color, and finally enter the linear feet to calculate the total price in CAD.
@@ -559,7 +559,7 @@ export function CustomerQuoteView({
               type="button"
               onClick={addProductRow}
               disabled={availableProducts.length === 0}
-              className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#084091] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#063273] disabled:bg-slate-300 transition-colors"
+              className="ui-btn-primary mt-5 px-5 py-2.5 text-sm"
             >
               <Plus className="h-4 w-4" />
               Add product
@@ -582,7 +582,7 @@ export function CustomerQuoteView({
             <div className="overflow-x-auto">
               <table className="w-full min-w-max border-collapse text-left text-sm">
                 <thead>
-                  <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
+                  <tr className="ui-table-head">
                     <th className="px-4 py-3 w-12 text-left">#</th>
                     <th className="px-4 py-3 min-w-[260px] text-left">Product</th>
                     <th className="px-4 py-3 min-w-[150px] text-left">Material Type</th>
@@ -601,7 +601,7 @@ export function CustomerQuoteView({
                     <th className="px-4 py-3 w-14 text-right" aria-label="Remove row" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-100">
                   {computedRows.map((row, idx) => {
                     const { item, product, color, productMaterials, colorAvailable } = row;
                     const showProductDetails = Boolean(product && row.productUsable);
@@ -612,7 +612,7 @@ export function CustomerQuoteView({
                     return (
                       <tr
                         key={item.rowKey}
-                        className={`divide-x divide-slate-200 ${idx % 2 === 1 ? 'bg-[#f7f7f7]/60' : 'bg-white'}`}
+                        className="bg-white transition-colors hover:bg-slate-50/60"
                       >
                         <td className="px-4 py-3 align-top text-left font-mono text-xs text-slate-500">
                           {idx + 1}
@@ -637,10 +637,10 @@ export function CustomerQuoteView({
                                   sizeResolution: noSizeResolution(),
                                 });
                               }}
-                              className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                              className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors focus:outline-none ${
                                 row.hasProductIssue
                                   ? 'border-red-500 bg-white text-red-800'
-                                  : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                  : 'border-slate-300/90 bg-white text-slate-900 focus:border-[#084091] focus:ring-3 focus:ring-[#084091]/12'
                               }`}
                             >
                               <option value="">-- Select product --</option>
@@ -710,10 +710,10 @@ export function CustomerQuoteView({
                                     sizeResolution: noSizeResolution(),
                                   });
                                 }}
-                                className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors focus:outline-none ${
                                   row.hasMaterialIssue
                                     ? 'border-red-500 bg-white text-red-800'
-                                    : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                    : 'border-slate-300/90 bg-white text-slate-900 focus:border-[#084091] focus:ring-3 focus:ring-[#084091]/12'
                                 }`}
                               >
                                 <option value="">-- Select material type --</option>
@@ -762,10 +762,10 @@ export function CustomerQuoteView({
                                           },
                                         });
                                       }}
-                                      className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                      className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors focus:outline-none ${
                                         row.hasSizeIssue
                                           ? 'border-red-500 bg-white text-red-800'
-                                          : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                          : 'border-slate-300/90 bg-white text-slate-900 focus:border-[#084091] focus:ring-3 focus:ring-[#084091]/12'
                                       }`}
                                     >
                                       <option value="">-- Select size --</option>
@@ -927,10 +927,10 @@ export function CustomerQuoteView({
                                     colorIssue: null,
                                   });
                                 }}
-                                className={`w-full rounded-md border px-2.5 py-2 text-left text-xs font-medium focus:outline-none ${
+                                className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors focus:outline-none ${
                                   row.hasColorIssue
                                     ? 'border-red-500 bg-white text-red-800'
-                                    : 'border-slate-300 bg-white text-slate-900 focus:border-[#084091]'
+                                    : 'border-slate-300/90 bg-white text-slate-900 focus:border-[#084091] focus:ring-3 focus:ring-[#084091]/12'
                                 }`}
                               >
                                 <option value="">-- Select color --</option>
@@ -1091,20 +1091,20 @@ export function CustomerQuoteView({
 
                 {/* Bottom Action + Grand Total Row */}
                 <tfoot>
-                  <tr className="divide-x divide-slate-200 border-t-2 border-slate-200 bg-[#f7f7f7]">
+                  <tr className="border-t border-slate-200 bg-slate-50/90">
                     <td colSpan={anyRowHasColorSelected ? 7 : 5} className="px-4 py-3.5 text-left">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <button
                           type="button"
                           onClick={addProductRow}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-[#084091] bg-white px-3.5 py-2 text-xs font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
+                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#084091] bg-white px-3.5 py-2 text-xs font-semibold text-[#084091] hover:bg-[#084091] hover:text-white transition-colors"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           Add product
                         </button>
                         <div className="flex items-center gap-2 text-xs text-slate-500">
                           <span>{draft.items.length} item(s)</span>
-                          <span aria-hidden="true">·</span>
+                          <span className="text-slate-300" aria-hidden="true">·</span>
                           <span className="font-mono tabular-nums">
                             {totalLinearFeet.toLocaleString('en-CA', { maximumFractionDigits: 2 })} lf total
                           </span>

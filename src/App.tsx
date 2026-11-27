@@ -389,13 +389,15 @@ export default function App() {
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <img
-            src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
-            alt="AdelCo Inc."
-            className="h-12 w-12 object-contain"
-          />
+      <div className="min-h-screen bg-[var(--color-canvas)] flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3.5 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <img
+              src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+              alt="AdelCo Inc."
+              className="h-9 w-9 object-contain"
+            />
+          </div>
           <p className="text-xs font-medium text-slate-500">Verifying session...</p>
         </div>
       </div>
@@ -412,38 +414,47 @@ export default function App() {
     return <ForcePasswordChangeView currentUser={currentUser} onDone={setCurrentUser} />;
   }
 
+  const userInitial = (currentUser.display_name || currentUser.username || 'U').charAt(0).toUpperCase();
+
   return (
-    <div className="min-h-screen bg-[#f7f7f7] text-slate-900 flex">
+    <div className="min-h-screen bg-[var(--color-canvas)] text-slate-900 flex">
       {/* Mobile Sidebar Backdrop */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-slate-900/45 backdrop-blur-[2px] lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
       {/* Left Workspace Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-150 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-200 lg:static lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Company Brand Lockup */}
-        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
+        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5">
           <div className="flex items-center gap-3 min-w-0">
-            <img
-              src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
-              alt="AdelCo Inc. Logo"
-              className="h-9 w-9 shrink-0 object-contain"
-            />
-            <span className="truncate text-base font-bold tracking-tight text-[#084091] whitespace-nowrap">
-              AdelCo Inc.
-            </span>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#eef4fc] p-1.5 ring-1 ring-[#084091]/10">
+              <img
+                src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+                alt="AdelCo Inc. Logo"
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="min-w-0">
+              <span className="block truncate font-display text-base font-bold tracking-tight text-[#084091] whitespace-nowrap">
+                AdelCo Inc.
+              </span>
+              <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                Quote & Catalog
+              </span>
+            </div>
           </div>
           <button
             type="button"
             onClick={() => setMobileMenuOpen(false)}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 lg:hidden"
+            className="ui-icon-btn lg:hidden"
             aria-label="Close navigation"
           >
             <X className="h-4 w-4" />
@@ -451,7 +462,10 @@ export default function App() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Primary">
+        <nav className="flex-1 space-y-1 px-3.5 py-4" aria-label="Primary">
+          <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Workspace
+          </div>
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -460,13 +474,17 @@ export default function App() {
                 key={item.id}
                 type="button"
                 onClick={() => requestTabChange(item.id)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold whitespace-nowrap transition-all ${
                   active
-                    ? 'bg-[#084091] text-white'
-                    : 'text-slate-700 hover:bg-[#f7f7f7] hover:text-slate-900'
+                    ? 'bg-[#084091] text-white shadow-sm shadow-[#084091]/20'
+                    : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
                 }`}
               >
-                <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-white' : 'text-slate-500'}`} />
+                <Icon
+                  className={`h-4 w-4 shrink-0 transition-colors ${
+                    active ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'
+                  }`}
+                />
                 <span className="truncate">{item.label}</span>
               </button>
             );
@@ -474,7 +492,7 @@ export default function App() {
         </nav>
 
         {/* Bottom Utility: Backup & Settings (if permitted) + Signed-In User & Sign Out */}
-        <div className="border-t border-slate-200 p-3 space-y-2">
+        <div className="border-t border-slate-100 p-3.5 space-y-2.5">
           {canBackupSettings && (
             <button
               type="button"
@@ -482,30 +500,34 @@ export default function App() {
                 setMobileMenuOpen(false);
                 setSettingsOpen(true);
               }}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-[#f7f7f7] hover:text-slate-900 whitespace-nowrap transition-colors"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 whitespace-nowrap transition-colors"
             >
               <DatabaseBackup className="h-4 w-4 shrink-0 text-[#2a6f3b]" />
               <span>Backup & Settings</span>
             </button>
           )}
 
-          <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-[#f7f7f7] px-3 py-2">
-            <div className="min-w-0">
-              <div className="truncate text-xs font-semibold text-slate-900">
-                {currentUser.display_name}
+          <div className="flex items-center justify-between gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#084091]/10 font-display text-xs font-bold text-[#084091]">
+                {userInitial}
               </div>
-              <div className="truncate font-mono text-[11px] text-slate-500">
-                @{currentUser.username} · {isAdmin ? 'Admin' : 'User'}
+              <div className="min-w-0">
+                <div className="truncate text-xs font-semibold text-slate-900">
+                  {currentUser.display_name}
+                </div>
+                <div className="truncate font-mono text-[10px] text-slate-500">
+                  @{currentUser.username} · {isAdmin ? 'Admin' : 'User'}
+                </div>
               </div>
             </div>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs hover:border-red-200 hover:bg-red-50 hover:text-red-700 transition-colors"
               title="Sign Out"
             >
               <LogOut className="h-3 w-3" />
-              Sign Out
             </button>
           </div>
         </div>
@@ -514,27 +536,27 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Bar */}
-        <header className="flex h-16 shrink-0 items-center justify-between gap-8 border-b border-slate-200 bg-white px-6">
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-8 border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur-md">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 lg:hidden"
+              className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 lg:hidden"
               aria-label="Open navigation"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="text-base font-bold text-slate-900 truncate whitespace-nowrap">
+            <h1 className="text-lg font-bold text-slate-900 truncate whitespace-nowrap">
               {navItems.length > 0 ? headerTitleMap[activeTab] : 'Workspace Access'}
             </h1>
           </div>
         </header>
 
         {/* Active View Canvas */}
-        <main className="flex-1 p-6">
-          <div className="mx-auto max-w-[1280px] space-y-4">
+        <main className="flex-1 p-5 sm:p-6 lg:p-7">
+          <div className="mx-auto max-w-[1320px] space-y-5">
             {navItems.length === 0 ? (
-              <div className="rounded-lg border border-slate-200 bg-white px-6 py-14 text-center">
+              <div className="ui-card px-6 py-14 text-center">
                 <h2 className="text-sm font-semibold text-slate-900">No Modules Enabled</h2>
                 <p className="mt-1 text-xs text-slate-500">
                   Your account currently has no workspace modules enabled. Contact your administrator to adjust permissions.
@@ -652,14 +674,14 @@ export default function App() {
 
       {/* Toast Stack */}
       {toasts.length > 0 && (
-        <div className="no-print fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm">
+        <div className="no-print fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm">
           {toasts.map((t) => (
             <div
               key={t.id}
-              className={`flex items-center gap-2.5 rounded-lg border px-4 py-3 text-xs font-medium shadow-lg ${
+              className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 text-xs font-medium shadow-lg backdrop-blur-sm ${
                 t.type === 'success'
-                  ? 'border-[#2a6f3b]/30 bg-white text-slate-900'
-                  : 'border-red-300 bg-red-50 text-red-800'
+                  ? 'border-emerald-200 bg-white/95 text-slate-900'
+                  : 'border-red-200 bg-red-50/95 text-red-800'
               }`}
             >
               {t.type === 'success' ? (

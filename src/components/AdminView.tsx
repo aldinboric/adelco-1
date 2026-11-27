@@ -367,12 +367,14 @@ export function AdminView({
   const activeUsersCount = users.filter((u) => u.is_active).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Own Administrator Account Security */}
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="ui-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-[#084091]" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#eef4fc] text-[#084091]">
+              <KeyRound className="h-3.5 w-3.5" />
+            </div>
             <h2 className="text-sm font-bold text-slate-900">My Administrator Credentials</h2>
           </div>
           <span className="text-xs text-slate-500">
@@ -382,44 +384,38 @@ export function AdminView({
 
         <form onSubmit={handleSaveOwnProfile} className="mt-4 space-y-4">
           {profileError && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-medium text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
               {profileError}
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Admin Username
-              </label>
+              <label className="ui-label">Admin Username</label>
               <input
                 type="text"
                 maxLength={32}
                 value={ownUsername}
                 onChange={(e) => setOwnUsername(e.target.value)}
-                className="h-10 w-full rounded-md border border-slate-300 px-3 font-mono text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input font-mono text-xs"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Display Name
-              </label>
+              <label className="ui-label">Display Name</label>
               <input
                 type="text"
                 maxLength={80}
                 value={ownDisplayName}
                 onChange={(e) => setOwnDisplayName(e.target.value)}
-                className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input text-xs"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Current Password
-              </label>
+              <label className="ui-label">Current Password</label>
               <input
                 type={showOwnPasswords ? 'text' : 'password'}
                 maxLength={128}
@@ -427,13 +423,13 @@ export function AdminView({
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Required to save"
                 autoComplete="current-password"
-                className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input text-xs"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 New Password <span className="font-normal text-slate-400">(optional)</span>
               </label>
               <input
@@ -443,14 +439,12 @@ export function AdminView({
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Min 8 characters"
                 autoComplete="new-password"
-                className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input text-xs"
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Confirm New Password
-              </label>
+              <label className="ui-label">Confirm New Password</label>
               <input
                 type={showOwnPasswords ? 'text' : 'password'}
                 maxLength={128}
@@ -458,7 +452,7 @@ export function AdminView({
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
                 placeholder="Repeat new password"
                 autoComplete="new-password"
-                className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input text-xs"
               />
             </div>
           </div>
@@ -467,17 +461,13 @@ export function AdminView({
             <button
               type="button"
               onClick={() => setShowOwnPasswords((v) => !v)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
+              className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
             >
               {showOwnPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               {showOwnPasswords ? 'Hide passwords' : 'Show passwords'}
             </button>
 
-            <button
-              type="submit"
-              disabled={savingProfile}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#084091] px-4 py-2 text-xs font-semibold text-white hover:bg-[#063273] disabled:bg-slate-400 whitespace-nowrap"
-            >
+            <button type="submit" disabled={savingProfile} className="ui-btn-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
               {savingProfile ? 'Updating...' : 'Update My Credentials'}
             </button>
@@ -486,34 +476,30 @@ export function AdminView({
       </div>
 
       {/* Users & Permissions Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-5 py-3.5">
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          <span className="font-medium text-slate-700">{users.length} total accounts</span>
-          <span aria-hidden="true">·</span>
+      <div className="ui-card flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-500">
+          <span className="font-semibold text-slate-800">{users.length} total accounts</span>
+          <span className="text-slate-300" aria-hidden="true">·</span>
           <span>{activeUsersCount} active</span>
-          <span aria-hidden="true">·</span>
+          <span className="text-slate-300" aria-hidden="true">·</span>
           <span>Accounts can only be provisioned by an administrator</span>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[#2a6f3b] px-4 py-2 text-xs font-medium text-white hover:bg-[#21572e] whitespace-nowrap shrink-0 transition-colors"
-        >
+        <button type="button" onClick={openAddModal} className="ui-btn-green">
           <Plus className="h-3.5 w-3.5" />
           Add User
         </button>
       </div>
 
       {/* Users Table */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="ui-card overflow-hidden">
         {loading ? (
           <TableSkeleton rows={3} rowHeightClass="h-11" cells={['h-4 w-8', 'h-4 w-44', 'h-4 w-24']} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-left text-sm">
               <thead>
-                <tr className="divide-x divide-white/20 border-b border-slate-200 bg-[#084091] text-xs font-semibold text-white">
+                <tr className="ui-table-head">
                   <th className="px-4 py-3 w-14 text-left">#</th>
                   <th className="px-4 py-3 text-left">User</th>
                   <th className="px-4 py-3 w-28 text-left">Role</th>
@@ -523,58 +509,60 @@ export function AdminView({
                   <th className="px-4 py-3 w-56 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {users.map((u, idx) => {
                   const isSelf = u.id === currentUser.id;
                   return (
                     <tr
                       key={u.id}
-                      className={`divide-x divide-slate-200 transition-colors ${
-                        !u.is_active
-                          ? 'bg-slate-100/80 text-slate-400'
-                          : idx % 2 === 1
-                          ? 'bg-[#f7f7f7]/60 hover:bg-slate-100/60'
-                          : 'bg-white hover:bg-slate-50'
+                      className={`transition-colors ${
+                        !u.is_active ? 'bg-slate-50/80 text-slate-400' : 'bg-white hover:bg-slate-50/70'
                       }`}
                     >
-                      <td className="px-4 py-2.5 text-left font-mono text-xs tabular-nums text-slate-500">
+                      <td className="px-4 py-3 text-left font-mono text-xs tabular-nums text-slate-400">
                         {idx + 1}
                       </td>
-                      <td className="px-4 py-2.5 text-left">
+                      <td className="px-4 py-3 text-left">
                         <div className="font-medium text-slate-900">
                           {u.display_name}
                           {isSelf && (
-                            <span className="ml-2 text-xs font-normal text-[#084091]">(You)</span>
+                            <span className="ml-2 rounded-full bg-[#eef4fc] px-2 py-0.5 text-[10px] font-semibold text-[#084091]">
+                              You
+                            </span>
                           )}
                         </div>
                         <div className="font-mono text-xs text-slate-500">@{u.username}</div>
                       </td>
-                      <td className="px-4 py-2.5 text-left text-xs font-semibold">
+                      <td className="px-4 py-3 text-left text-xs font-semibold">
                         {u.role === 'admin' ? (
-                          <span className="text-[#084091]">Admin</span>
+                          <span className="inline-flex items-center rounded-full bg-[#eef4fc] px-2.5 py-0.5 text-[11px] font-semibold text-[#084091]">
+                            Admin
+                          </span>
                         ) : (
-                          <span className="text-slate-700">User</span>
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                            User
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-left text-xs text-slate-600">
+                      <td className="px-4 py-3 text-left text-xs text-slate-600">
                         {summarizePermissions(u)}
                       </td>
-                      <td className="px-4 py-2.5 text-left text-xs font-medium">
+                      <td className="px-4 py-3 text-left">
                         {u.is_active ? (
-                          <span className="text-[#2a6f3b]">Active</span>
+                          <span className="ui-badge-available">Active</span>
                         ) : (
-                          <span className="text-red-700">Disabled</span>
+                          <span className="ui-badge-unavailable">Disabled</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-slate-500">
+                      <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-slate-500">
                         {u.last_login_at ? u.last_login_at.slice(0, 16).replace('T', ' ') : 'Never'}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => openEditModal(u)}
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors"
                           >
                             <Pencil className="h-3 w-3" />
                             Edit
@@ -582,7 +570,7 @@ export function AdminView({
                           <button
                             type="button"
                             onClick={() => handleToggleActive(u)}
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors"
                           >
                             {u.is_active ? (
                               <>
@@ -600,7 +588,7 @@ export function AdminView({
                             type="button"
                             disabled={isSelf}
                             onClick={() => setDeleteTarget(u)}
-                            className="inline-flex items-center rounded border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="inline-flex cursor-pointer items-center rounded-lg border border-red-200/80 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
                             title={isSelf ? 'Cannot delete your own active account' : 'Delete user'}
                             aria-label={`Delete ${u.username}`}
                           >
@@ -619,216 +607,198 @@ export function AdminView({
 
       {/* Add / Edit User Modal */}
       {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/45"
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="ui-modal-backdrop" role="dialog" aria-modal="true">
           <div className="flex min-h-full items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow-xl my-6">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h3 className="text-base font-semibold text-slate-900">
-                {editingUser ? `Edit User @${editingUser.username}` : 'Create User Account'}
-              </h3>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveUser} className="space-y-4 px-5 py-4">
-              {formError && (
-                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                  {formError}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={32}
-                    value={formUsername}
-                    onChange={(e) => setFormUsername(e.target.value)}
-                    placeholder="e.g. john.smith"
-                    className="h-10 w-full rounded-md border border-slate-300 px-3 font-mono text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
-                    required
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    3–32 characters (lowercase letters, numbers, ., _, -)
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={80}
-                    value={formDisplayName}
-                    onChange={(e) => setFormDisplayName(e.target.value)}
-                    placeholder="e.g. John Smith"
-                    className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
-                    required
-                  />
-                </div>
+            <div className="ui-modal-panel max-w-2xl my-6">
+              <div className="ui-modal-header">
+                <h3 className="text-base font-semibold text-slate-900">
+                  {editingUser ? `Edit User @${editingUser.username}` : 'Create User Account'}
+                </h3>
+                <button type="button" onClick={closeModal} className="ui-icon-btn" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="sm:col-span-1">
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                    Role
-                  </label>
-                  <select
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value === 'admin' ? 'admin' : 'user')}
-                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-900 focus:border-[#084091] focus:outline-none"
-                  >
-                    <option value="user">Standard User</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                    {editingUser ? 'Reset Password (leave blank to keep current)' : 'Initial Password'}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showFormPassword ? 'text' : 'password'}
-                      maxLength={128}
-                      value={formPassword}
-                      onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder={editingUser ? 'Optional (min 8 chars)' : 'Minimum 8 characters'}
-                      autoComplete="new-password"
-                      className="h-10 w-full rounded-md border border-slate-300 pl-3 pr-10 text-xs text-slate-900 focus:border-[#084091] focus:outline-none"
-                      required={!editingUser}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowFormPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
-                      aria-label={showFormPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+              <form onSubmit={handleSaveUser} className="space-y-4 px-6 py-5">
+                {formError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
+                    {formError}
                   </div>
-                </div>
-              </div>
+                )}
 
-              <div className="flex items-center gap-2.5 pt-1">
-                <input
-                  id="user-active-checkbox"
-                  type="checkbox"
-                  checked={formActive}
-                  onChange={(e) => setFormActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-[#084091] focus:ring-[#084091]"
-                />
-                <label htmlFor="user-active-checkbox" className="text-xs font-medium text-slate-800">
-                  Account is active and permitted to sign in
-                </label>
-              </div>
-
-              {/* Permissions Matrix */}
-              <div className="border-t border-slate-200 pt-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900">
-                      Module & Action Permissions
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      {formRole === 'admin'
-                        ? 'Administrators automatically have full access to all modules and user management.'
-                        : 'All modules are enabled by default. Uncheck any area or action you want to restrict.'}
+                    <label className="ui-label">Username</label>
+                    <input
+                      type="text"
+                      maxLength={32}
+                      value={formUsername}
+                      onChange={(e) => setFormUsername(e.target.value)}
+                      placeholder="e.g. john.smith"
+                      className="ui-input font-mono text-xs"
+                      required
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      3–32 characters (lowercase letters, numbers, ., _, -)
                     </p>
                   </div>
 
-                  {formRole === 'user' && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormPermissions({ ...DEFAULT_USER_PERMISSIONS })}
-                        className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        Enable All
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormPermissions({ ...EMPTY_USER_PERMISSIONS })}
-                        className="rounded border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                  )}
+                  <div>
+                    <label className="ui-label">Display Name</label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={formDisplayName}
+                      onChange={(e) => setFormDisplayName(e.target.value)}
+                      placeholder="e.g. John Smith"
+                      className="ui-input text-xs"
+                      required
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {PERMISSION_GROUPS.map((group) => (
-                    <div
-                      key={group.title}
-                      className="rounded-md border border-slate-200 bg-[#f7f7f7]/70 p-3 space-y-2.5"
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="sm:col-span-1">
+                    <label className="ui-label">Role</label>
+                    <select
+                      value={formRole}
+                      onChange={(e) => setFormRole(e.target.value === 'admin' ? 'admin' : 'user')}
+                      className="ui-input text-xs font-medium"
                     >
-                      <div className="text-[11px] font-bold uppercase tracking-wide text-[#084091]">
-                        {group.title}
-                      </div>
-                      {group.items.map((item) => {
-                        const checked =
-                          formRole === 'admin' ? true : Boolean(formPermissions[item.key]);
-                        return (
-                          <label
-                            key={item.key}
-                            className={`flex items-start gap-2 text-xs ${
-                              formRole === 'admin' ? 'opacity-65 cursor-not-allowed' : 'cursor-pointer'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={formRole === 'admin'}
-                              onChange={() => togglePermission(item.key)}
-                              className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#084091] focus:ring-[#084091]"
-                            />
-                            <div>
-                              <div className="font-medium text-slate-800">{item.label}</div>
-                              <div className="text-[11px] leading-tight text-slate-500">
-                                {item.description}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                      <option value="user">Standard User</option>
+                      <option value="admin">Administrator</option>
+                    </select>
+                  </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={savingUser}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingUser}
-                  className="rounded-md bg-[#084091] px-4 py-2 text-sm font-medium text-white hover:bg-[#063273] disabled:bg-slate-400"
-                >
-                  {savingUser ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
-                </button>
-              </div>
-            </form>
-          </div>
+                  <div className="sm:col-span-2">
+                    <label className="ui-label">
+                      {editingUser ? 'Reset Password (leave blank to keep current)' : 'Initial Password'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showFormPassword ? 'text' : 'password'}
+                        maxLength={128}
+                        value={formPassword}
+                        onChange={(e) => setFormPassword(e.target.value)}
+                        placeholder={editingUser ? 'Optional (min 8 chars)' : 'Minimum 8 characters'}
+                        autoComplete="new-password"
+                        className="ui-input pr-10 text-xs"
+                        required={!editingUser}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowFormPassword((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-600"
+                        aria-label={showFormPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 pt-1">
+                  <input
+                    id="user-active-checkbox"
+                    type="checkbox"
+                    checked={formActive}
+                    onChange={(e) => setFormActive(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#084091] focus:ring-[#084091]"
+                  />
+                  <label htmlFor="user-active-checkbox" className="text-xs font-medium text-slate-800">
+                    Account is active and permitted to sign in
+                  </label>
+                </div>
+
+                {/* Permissions Matrix */}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">
+                        Module & Action Permissions
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        {formRole === 'admin'
+                          ? 'Administrators automatically have full access to all modules and user management.'
+                          : 'All modules are enabled by default. Uncheck any area or action you want to restrict.'}
+                      </p>
+                    </div>
+
+                    {formRole === 'user' && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormPermissions({ ...DEFAULT_USER_PERMISSIONS })}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Enable All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormPermissions({ ...EMPTY_USER_PERMISSIONS })}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {PERMISSION_GROUPS.map((group) => (
+                      <div
+                        key={group.title}
+                        className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 space-y-2.5"
+                      >
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-[#084091]">
+                          {group.title}
+                        </div>
+                        {group.items.map((item) => {
+                          const checked =
+                            formRole === 'admin' ? true : Boolean(formPermissions[item.key]);
+                          return (
+                            <label
+                              key={item.key}
+                              className={`flex items-start gap-2 text-xs ${
+                                formRole === 'admin' ? 'opacity-65 cursor-not-allowed' : 'cursor-pointer'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={formRole === 'admin'}
+                                onChange={() => togglePermission(item.key)}
+                                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#084091] focus:ring-[#084091]"
+                              />
+                              <div>
+                                <div className="font-medium text-slate-800">{item.label}</div>
+                                <div className="text-[11px] leading-tight text-slate-500">
+                                  {item.description}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    disabled={savingUser}
+                    className="ui-btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={savingUser} className="ui-btn-primary">
+                    {savingUser ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

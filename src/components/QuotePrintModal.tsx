@@ -37,108 +37,95 @@ export function QuotePrintModal({
     // modal stays vertically centered when short, but grows with content when the
     // quote has many items — avoiding the flex-centering overflow that clipped the
     // top of tall reports and made them impossible to scroll.
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50"
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="ui-modal-backdrop" role="dialog" aria-modal="true">
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="w-full max-w-4xl rounded-lg border border-slate-200 bg-white shadow-2xl">
-        {/* Modal Action Bar (hidden when printing) — sticky so it stays reachable on long quotes */}
-        <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-[#f7f7f7] px-6 py-3.5 rounded-t-lg">
-          <div className="text-sm font-semibold text-slate-900">
-            Issued Quote <span className="font-mono text-[#084091]">{quote.quote_number}</span>
-          </div>
+        <div className="ui-modal-panel max-w-4xl">
+          {/* Modal Action Bar (hidden when printing) — sticky so it stays reachable on long quotes */}
+          <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-2xl border-b border-slate-200/80 bg-slate-50/95 px-6 py-3.5 backdrop-blur-sm">
+            <div className="text-sm font-semibold text-slate-900">
+              Issued Quote <span className="font-mono text-[#084091]">{quote.quote_number}</span>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {canExport && (
-              <>
+            <div className="flex flex-wrap items-center gap-2">
+              {canExport && (
+                <>
+                  <button type="button" onClick={() => window.print()} className="ui-btn-primary">
+                    <Printer className="h-3.5 w-3.5" />
+                    Print
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadProtectedFile(`/api/quotes/${quote.id}/export/pdf`, `${quote.quote_number}.pdf`).catch(
+                        (err) => onNotify?.('error', err instanceof Error ? err.message : 'Export failed.')
+                      )
+                    }
+                    className="ui-btn-secondary"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-[#084091]" />
+                    Export PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadProtectedFile(
+                        `/api/quotes/${quote.id}/export/excel`,
+                        `${quote.quote_number}.xlsx`
+                      ).catch((err) =>
+                        onNotify?.('error', err instanceof Error ? err.message : 'Export failed.')
+                      )
+                    }
+                    className="ui-btn-secondary"
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
+                    Export Excel
+                  </button>
+                </>
+              )}
+              {canCopy && (
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#084091] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#063273] whitespace-nowrap shrink-0"
+                  onClick={() => onCopyToNewQuote(quote.id)}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#2a6f3b] bg-white px-3.5 py-2 text-xs font-semibold text-[#2a6f3b] hover:bg-[#2a6f3b] hover:text-white whitespace-nowrap shrink-0 transition-colors"
                 >
-                  <Printer className="h-3.5 w-3.5" />
-                  Print
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy to New Quote
                 </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadProtectedFile(`/api/quotes/${quote.id}/export/pdf`, `${quote.quote_number}.pdf`).catch(
-                      (err) => onNotify?.('error', err instanceof Error ? err.message : 'Export failed.')
-                    )
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
-                >
-                  <FileText className="h-3.5 w-3.5 text-[#084091]" />
-                  Export PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadProtectedFile(
-                      `/api/quotes/${quote.id}/export/excel`,
-                      `${quote.quote_number}.xlsx`
-                    ).catch((err) =>
-                      onNotify?.('error', err instanceof Error ? err.message : 'Export failed.')
-                    )
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-[#2a6f3b]" />
-                  Export Excel
-                </button>
-              </>
-            )}
-            {canCopy && (
-              <button
-                type="button"
-                onClick={() => onCopyToNewQuote(quote.id)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[#2a6f3b] bg-white px-3.5 py-2 text-xs font-medium text-[#2a6f3b] hover:bg-[#2a6f3b] hover:text-white whitespace-nowrap shrink-0 transition-colors"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Copy to New Quote
+              )}
+              <button type="button" onClick={onClose} className="ui-icon-btn ml-1" aria-label="Close">
+                <X className="h-4 w-4" />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-1 rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Printable Document Sheet */}
-        <div id="printable-quote-sheet" className="p-8">
-          {/* Brand Header */}
-          <div className="flex items-start justify-between border-b-2 border-[#084091] pb-5">
-            <div className="flex items-center gap-3.5">
-              <img
-                src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
-                alt="AdelCo Inc."
-                className="h-12 w-12 object-contain"
-              />
-              <div>
-                <h2 className="text-xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h2>
-                <p className="text-xs text-slate-500">Products & Finishes · Customer Quote</p>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Quote Number
-              </div>
-              <div className="mt-0.5 font-mono text-lg font-bold text-[#084091]">
-                {quote.quote_number}
-              </div>
             </div>
           </div>
 
-          {/* Quote Metadata */}
-          <div className="mt-5 grid grid-cols-3 gap-4 rounded-md border border-slate-200 bg-[#f7f7f7] px-5 py-3.5 text-xs">
+          {/* Printable Document Sheet */}
+          <div id="printable-quote-sheet" className="p-8">
+            {/* Brand Header */}
+            <div className="flex items-start justify-between border-b-2 border-[#084091] pb-5">
+              <div className="flex items-center gap-3.5">
+                <img
+                  src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+                  alt="AdelCo Inc."
+                  className="h-12 w-12 object-contain"
+                />
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h2>
+                  <p className="text-xs text-slate-500">Products & Finishes · Customer Quote</p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Quote Number
+                </div>
+                <div className="mt-0.5 font-mono text-lg font-bold text-[#084091]">
+                  {quote.quote_number}
+                </div>
+              </div>
+            </div>
+
+            {/* Quote Metadata */}
+            <div className="mt-5 grid grid-cols-3 gap-4 rounded-xl border border-slate-200/80 bg-slate-50/80 px-5 py-3.5 text-xs">
             <div>
               <div className="font-semibold text-slate-500">Customer</div>
               <div className="mt-0.5 text-sm font-semibold text-slate-900">

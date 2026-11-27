@@ -48,23 +48,25 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] flex flex-col justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-[#f4f6f9] via-white to-[#eef4fc] flex flex-col justify-center px-4 py-12">
       <div className="mx-auto w-full max-w-md">
         {/* Brand Header */}
-        <div className="mb-6 flex flex-col items-center text-center">
-          <img
-            src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
-            alt="AdelCo Inc."
-            className="h-14 w-14 object-contain"
-          />
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200/80 bg-white p-2.5 shadow-sm">
+            <img
+              src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+              alt="AdelCo Inc."
+              className="h-full w-full object-contain"
+            />
+          </div>
+          <h1 className="mt-3.5 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
           <p className="mt-1 text-xs font-medium text-slate-500">
-            Home Services
+            Home Services · Quote & Catalog Workspace
           </p>
         </div>
 
         {/* Sign-In Card */}
-        <div className="rounded-lg border border-slate-200 bg-white p-7 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-7 shadow-lg shadow-slate-200/60">
           <div className="mb-5 border-b border-slate-100 pb-4">
             <h2 className="text-base font-bold text-slate-900">Sign in to your account</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -73,7 +75,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
           </div>
 
           {sessionNotice && !error && (
-            <div className="mb-4 flex items-start gap-2.5 rounded-md border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-900">
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-900">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>{sessionNotice}</span>
             </div>
@@ -82,7 +84,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
           {error && (
             <div
               role="alert"
-              className="mb-4 flex items-start gap-2.5 rounded-md border border-red-300 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-800"
+              className="mb-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-800"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
               <span>{error}</span>
@@ -91,10 +93,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="login-username"
-                className="mb-1.5 block text-xs font-semibold text-slate-700"
-              >
+              <label htmlFor="login-username" className="ui-label">
                 Username
               </label>
               <input
@@ -108,16 +107,13 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter username"
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#084091] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#084091]/20"
+                className="ui-input"
                 required
               />
             </div>
 
             <div>
-              <label
-                htmlFor="login-password"
-                className="mb-1.5 block text-xs font-semibold text-slate-700"
-              >
+              <label htmlFor="login-password" className="ui-label">
                 Password
               </label>
               <div className="relative">
@@ -129,13 +125,13 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
-                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-3 pr-10 text-sm text-slate-900 focus:border-[#084091] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#084091]/20"
+                  className="ui-input pr-10"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-[#084091]"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-[#084091]"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -146,7 +142,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#084091] px-4 py-2 text-sm font-semibold text-white hover:bg-[#063273] disabled:bg-slate-400 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#084091]"
+              className="ui-btn-primary mt-2 h-10 w-full text-sm"
             >
               <LogIn className="h-4 w-4" />
               {submitting ? 'Signing in...' : 'Sign In'}

@@ -11,8 +11,7 @@ interface ExportButtonsProps {
   onError: (message: string) => void;
 }
 
-const btnClass =
-  'inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#f7f7f7] whitespace-nowrap shrink-0';
+const btnClass = 'ui-btn-secondary';
 
 /**
  * Excel/PDF export button pair — shared by the Colors, Products and Issued

@@ -61,19 +61,21 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] flex flex-col justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-[#f4f6f9] via-white to-[#eef4fc] flex flex-col justify-center px-4 py-12">
       <div className="mx-auto w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <img
-            src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
-            alt="AdelCo Inc."
-            className="h-14 w-14 object-contain"
-          />
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200/80 bg-white p-2.5 shadow-sm">
+            <img
+              src="/assets/logo/Company_logo_1.0__Clean__no_black_shadow__bfc97f74.svg"
+              alt="AdelCo Inc."
+              className="h-full w-full object-contain"
+            />
+          </div>
+          <h1 className="mt-3.5 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
         </div>
 
-        <div className="rounded-lg border border-amber-300 bg-white p-7 shadow-sm">
-          <div className="mb-5 flex items-start gap-2.5 rounded-md border border-amber-300 bg-amber-50 px-3.5 py-3 text-xs font-medium text-amber-900">
+        <div className="rounded-2xl border border-amber-200/90 bg-white p-7 shadow-lg shadow-slate-200/60">
+          <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-medium text-amber-900">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
               <strong>Security requirement:</strong> Your account <span className="font-mono font-semibold">@{currentUser.username}</span> is
@@ -93,7 +95,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
           {error && (
             <div
               role="alert"
-              className="mb-4 flex items-start gap-2.5 rounded-md border border-red-300 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-800"
+              className="mb-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-800"
             >
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
               <span>{error}</span>
@@ -102,7 +104,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 Current Password
               </label>
               <input
@@ -112,12 +114,12 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Enter current password"
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input"
                 required
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 New Password
               </label>
               <input
@@ -127,12 +129,12 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Min 8 characters"
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input"
                 required
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              <label className="ui-label">
                 Confirm New Password
               </label>
               <input
@@ -142,7 +144,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat new password"
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#084091] focus:outline-none"
+                className="ui-input"
                 required
               />
             </div>
@@ -150,7 +152,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
             <button
               type="button"
               onClick={() => setShowPasswords((v) => !v)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
+              className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
             >
               {showPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               {showPasswords ? 'Hide passwords' : 'Show passwords'}
@@ -159,7 +161,7 @@ export function ForcePasswordChangeView({ currentUser, onDone }: ForcePasswordCh
             <button
               type="submit"
               disabled={submitting}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#084091] px-4 py-2 text-sm font-semibold text-white hover:bg-[#063273] disabled:bg-slate-400 transition-colors"
+              className="ui-btn-primary h-10 w-full text-sm"
             >
               {submitting ? (
                 'Saving...'

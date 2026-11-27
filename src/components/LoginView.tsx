@@ -60,7 +60,7 @@ export function LoginView({ onLoginSuccess, sessionNotice }: LoginViewProps) {
             />
           </div>
           <h1 className="mt-3.5 text-2xl font-bold tracking-tight text-[#084091]">AdelCo Inc.</h1>
-          <p className="mt-1 text-xs font-medium text-slate-500">
+          <p className="mt-1.5 text-[12.5px] font-semibold uppercase tracking-[0.18em] text-slate-400">
             Home Services
           </p>
         </div>
